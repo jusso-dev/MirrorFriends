@@ -125,7 +125,7 @@ struct MyMirrorView: View {
             goals = m.goals.joined(separator: ", ")
             boundaries = m.boundaries.joined(separator: "\n")
         } catch {
-            self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+            self.error = friendlyMessage(error)
         }
         loading = false
     }
@@ -147,7 +147,7 @@ struct MyMirrorView: View {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 savedFlash = false
             } catch {
-                self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+                self.error = friendlyMessage(error)
             }
             saving = false
         }

@@ -76,7 +76,7 @@ struct MemoryView: View {
         do {
             memories = try await app.api.listMyMemories(includeArchived: showArchived)
         } catch {
-            self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+            self.error = friendlyMessage(error)
         }
         loading = false
     }
@@ -181,7 +181,7 @@ struct MemoryEditView: View {
                 await onDone()
                 dismiss()
             } catch {
-                self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+                self.error = friendlyMessage(error)
             }
             saving = false
         }

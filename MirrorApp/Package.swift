@@ -28,6 +28,8 @@ let package = Package(
         .package(url: "https://source.skip.tools/skip-ui.git", from: "1.0.0"),
         .package(url: "https://source.skip.tools/skip-foundation.git", from: "1.0.0"),
         .package(url: "https://source.skip.tools/skip-model.git", from: "1.0.0"),
+        // Native Convex client (iOS/macOS). See MirrorModel/ConvexService.swift.
+        .package(url: "https://github.com/get-convex/convex-swift", from: "0.8.1"),
     ],
     targets: [
         .target(
@@ -44,6 +46,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SkipFoundation", package: "skip-foundation"),
                 .product(name: "SkipModel", package: "skip-model"),
+                .product(name: "ConvexMobile", package: "convex-swift"),
             ],
             plugins: [.plugin(name: "skipstone", package: "skip")]
         ),

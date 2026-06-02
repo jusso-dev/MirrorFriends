@@ -29,16 +29,19 @@ final class MirrorModelTests: XCTestCase {
         XCTAssertFalse(memory.archived)
     }
 
-    func testConvexArgsEncoding() throws {
-        var args = ConvexArgs()
-        args.set("name", .string("Justin"))
-        args.set("interests", .of(["ai", "mobile"]))
-        args.set("count", .number(3))
-        let data = try JSONEncoder().encode(args.json)
+    func testJSONValueRoundTrip() throws {
+        let value = JSONValue.object([
+            "name": .string("Justin"),
+            "interests": .array([.string("ai"), .string("mobile")]),
+            "count": .number(3),
+            "active": .bool(true),
+        ])
+        let data = try JSONEncoder().encode(value)
         let roundTrip = try JSONDecoder().decode(JSONValue.self, from: data)
         guard case let .object(obj) = roundTrip else { return XCTFail("expected object") }
         XCTAssertEqual(obj["name"], .string("Justin"))
         XCTAssertEqual(obj["interests"], .array([.string("ai"), .string("mobile")]))
+        XCTAssertEqual(obj["active"], .bool(true))
     }
 
     func testCurrentUserNullMirror() throws {

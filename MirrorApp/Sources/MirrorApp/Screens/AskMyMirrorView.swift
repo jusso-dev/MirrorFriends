@@ -118,7 +118,7 @@ struct AskMyMirrorView: View {
                 // Reload to get the persisted user + mirror messages in order.
                 messages = try await app.api.listAssistantMessages()
             } catch {
-                self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+                self.error = friendlyMessage(error)
             }
             sending = false
         }

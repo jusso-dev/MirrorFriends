@@ -18,26 +18,23 @@ These shells are environment- and signing-specific, so regenerate them locally
 with `skip init` rather than relying on checked-in copies. The
 `PRODUCT_BUNDLE_IDENTIFIER`, version, and team come from `Skip.env`.
 
-## Networking
+## Networking — native Convex SDK
 
-`MirrorModel/ConvexClient.swift` uses `URLSession` (via SkipFoundation), which
-transpiles cleanly to Android's networking stack. This is why the app talks to
-Convex over its HTTP API (`/api/query|mutation|action`) rather than a native
-client — one code path, both platforms.
+`MirrorModel/ConvexService.swift` wraps the native
+[`convex-swift`](https://github.com/get-convex/convex-swift) SDK (`ConvexMobile`).
+It maintains a live WebSocket, handles reconnection and auth refresh, and decodes
+results for us. One-shot reads use `query(...)` (first value of a subscription);
+screens that want live updates can use `subscribe(...)`.
 
-### Optional: native `convex-swift` on iOS
+The whole app is written against the `MirrorAPI` facade, so the SDK is referenced
+in exactly one place (`ConvexService`).
 
-If you want reactive subscriptions on iOS, add the
-[`convex-swift`](https://github.com/get-convex/convex-swift) package and write a
-small adapter conforming to `ConvexClient`, then inject it on Darwin only:
+### Android note
 
-```swift
-#if os(iOS) && !SKIP
-let client: ConvexClient = ConvexMobileAdapter(deploymentUrl: AppConfig.convexURL)
-#else
-let client: ConvexClient = ConvexHTTPClient(deploymentUrl: AppConfig.convexURL, auth: auth)
-#endif
-```
-
-The native client depends on a Rust/UniFFI core that Skip can't transpile, so it
-must stay behind an iOS-only `#if`.
+`ConvexMobile` ships an Apple-platform binary (a Rust/UniFFI core), so it
+compiles for the iOS/macOS targets directly. For the Android build, Convex
+provides a native Kotlin client
+([`convex-mobile`](https://github.com/get-convex/convex-mobile)) with the same
+function-call surface. Bridge it behind `ConvexService` using Skip's native
+interop (`#if SKIP` / a Kotlin shim) — `MirrorAPI` and every screen stay
+unchanged because they only depend on `ConvexService`.

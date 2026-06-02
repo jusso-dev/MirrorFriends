@@ -140,7 +140,7 @@ struct HomeView: View {
             unread = try await u
             await app.reloadMirror()
         } catch {
-            self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+            self.error = friendlyMessage(error)
         }
         loading = false
     }

@@ -1,11 +1,13 @@
 import Foundation
+import ConvexMobile
 
 // ===========================================================================
-// MirrorAPI — a typed facade over the Convex function surface.
+// MirrorAPI — a typed facade over the Convex function surface, built on the
+// native ConvexService. Function names and argument shapes live here in one
+// place and stay in sync with the Convex modules under /convex.
 //
-// Every backend call the app makes goes through here, so function names and
-// argument shapes live in exactly one place and stay in sync with the Convex
-// modules under /convex.
+// Numeric arguments are sent as `Double` so they match the backend's
+// `v.number()` (float64) validators.
 // ===========================================================================
 
 public struct OnboardingInput: Sendable {
@@ -71,17 +73,17 @@ public struct AskResponse: Codable, Sendable { public var answer: String }
 public struct GenerateConversationResponse: Codable, Sendable { public var conversationId: String }
 
 public struct MirrorAPI: Sendable {
-    public let client: ConvexClient
-    public init(client: ConvexClient) { self.client = client }
+    public let service: ConvexService
+    public init(service: ConvexService) { self.service = service }
 
     // MARK: Queries
 
     public func getCurrentUser() async throws -> CurrentUser? {
-        try await client.query("users:getCurrentUser")
+        try await service.query("users:getCurrentUser")
     }
 
     public func getMyMirror() async throws -> MyMirror {
-        try await client.query("mirrors:getMyMirror")
+        try await service.query("mirrors:getMyMirror")
     }
 
     public func listMyMemories(
@@ -89,188 +91,176 @@ public struct MirrorAPI: Sendable {
         type: MemoryType? = nil,
         includeArchived: Bool = false
     ) async throws -> [Memory] {
-        var args = ConvexArgs()
-        if let v = visibility { args.set("visibility", .string(v.rawValue)) }
-        if let t = type { args.set("type", .string(t.rawValue)) }
-        args.set("includeArchived", .bool(includeArchived))
-        return try await client.query("memories:listMyMemories", args: args)
+        var args: [String: ConvexEncodable?] = ["includeArchived": includeArchived]
+        if let v = visibility { args["visibility"] = v.rawValue }
+        if let t = type { args["type"] = t.rawValue }
+        return try await service.query("memories:listMyMemories", args: args)
     }
 
     public func listMyFriends() async throws -> [FriendSummary] {
-        try await client.query("friends:listMyFriends")
+        try await service.query("friends:listMyFriends")
     }
 
     public func listMirrorConversations(limit: Int? = nil) async throws -> [ConversationSummary] {
-        var args = ConvexArgs()
-        if let l = limit { args.set("limit", .number(Double(l))) }
-        return try await client.query("conversations:listMirrorConversations", args: args)
+        var args: [String: ConvexEncodable?] = [:]
+        if let l = limit { args["limit"] = Double(l) }
+        return try await service.query("conversations:listMirrorConversations", args: args)
     }
 
     public func listConversationMessages(conversationId: String) async throws -> ConversationThread {
-        var args = ConvexArgs()
-        args.set("conversationId", .string(conversationId))
-        return try await client.query("conversations:listConversationMessages", args: args)
+        try await service.query(
+            "conversations:listConversationMessages",
+            args: ["conversationId": conversationId]
+        )
     }
 
     public func listAssistantMessages(limit: Int = 50) async throws -> [AssistantMessage] {
-        var args = ConvexArgs()
-        args.set("limit", .number(Double(limit)))
-        return try await client.query("conversations:listAssistantMessages", args: args)
+        try await service.query(
+            "conversations:listAssistantMessages",
+            args: ["limit": Double(limit)]
+        )
     }
 
     public func listNotifications(unreadOnly: Bool = false) async throws -> [AppNotification] {
-        var args = ConvexArgs()
-        args.set("unreadOnly", .bool(unreadOnly))
-        return try await client.query("notifications:listNotifications", args: args)
+        try await service.query(
+            "notifications:listNotifications",
+            args: ["unreadOnly": unreadOnly]
+        )
     }
 
     public func unreadCount() async throws -> Int {
-        try await client.query("notifications:unreadCount")
+        let value: Double = try await service.query("notifications:unreadCount")
+        return Int(value)
     }
 
     public func getAiUsageEstimate() async throws -> AiUsageEstimate {
-        try await client.query("settings:getAiUsageEstimate")
+        try await service.query("settings:getAiUsageEstimate")
+    }
+
+    public func exportMyData() async throws -> JSONValue {
+        try await service.query("settings:exportMyData")
     }
 
     // MARK: Mutations
 
     @discardableResult
     public func ensureUser() async throws -> String {
-        try await client.mutation("users:ensureUser")
-    }
-
-    public func completeOnboarding(_ input: OnboardingInput) async throws -> OnboardingResult {
-        var args = ConvexArgs()
-        args.set("name", .string(input.name))
-        if let v = input.nickname { args.set("nickname", .string(v)) }
-        if let v = input.bio { args.set("bio", .string(v)) }
-        args.set("interests", .of(input.interests))
-        if let v = input.work { args.set("work", .string(v)) }
-        if let v = input.communicationStyle { args.set("communicationStyle", .string(v)) }
-        if let v = input.thingsToKnow { args.set("thingsToKnow", .string(v)) }
-        if let v = input.thingsToAvoid { args.set("thingsToAvoid", .string(v)) }
-        args.set("privacyBoundaries", .of(input.privacyBoundaries))
-        if let v = input.mirrorName { args.set("mirrorName", .string(v)) }
-        if let v = input.avatarEmoji { args.set("avatarEmoji", .string(v)) }
-        return try await client.mutation("users:completeOnboarding", args: args)
+        try await service.mutation("users:ensureUser")
     }
 
     @discardableResult
-    public func updateMirrorProfile(_ update: MirrorProfileUpdate) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        if let v = update.name { args.set("name", .string(v)) }
-        if let v = update.avatarEmoji { args.set("avatarEmoji", .string(v)) }
-        if let v = update.personality { args.set("personality", .string(v)) }
-        if let v = update.communicationStyle { args.set("communicationStyle", .string(v)) }
-        if let v = update.interests { args.set("interests", .of(v)) }
-        if let v = update.goals { args.set("goals", .of(v)) }
-        if let v = update.boundaries { args.set("boundaries", .of(v)) }
-        if let v = update.thingsToKnow { args.set("thingsToKnow", .string(v)) }
-        if let v = update.thingsToAvoid { args.set("thingsToAvoid", .string(v)) }
-        return try await client.mutation("mirrors:updateMirrorProfile", args: args)
+    public func completeOnboarding(_ input: OnboardingInput) async throws -> OnboardingResult {
+        var args: [String: ConvexEncodable?] = [
+            "name": input.name,
+            "interests": input.interests,
+            "privacyBoundaries": input.privacyBoundaries,
+        ]
+        if let v = input.nickname { args["nickname"] = v }
+        if let v = input.bio { args["bio"] = v }
+        if let v = input.work { args["work"] = v }
+        if let v = input.communicationStyle { args["communicationStyle"] = v }
+        if let v = input.thingsToKnow { args["thingsToKnow"] = v }
+        if let v = input.thingsToAvoid { args["thingsToAvoid"] = v }
+        if let v = input.mirrorName { args["mirrorName"] = v }
+        if let v = input.avatarEmoji { args["avatarEmoji"] = v }
+        return try await service.mutation("users:completeOnboarding", args: args)
+    }
+
+    public func updateMirrorProfile(_ update: MirrorProfileUpdate) async throws {
+        var args: [String: ConvexEncodable?] = [:]
+        if let v = update.name { args["name"] = v }
+        if let v = update.avatarEmoji { args["avatarEmoji"] = v }
+        if let v = update.personality { args["personality"] = v }
+        if let v = update.communicationStyle { args["communicationStyle"] = v }
+        if let v = update.interests { args["interests"] = v }
+        if let v = update.goals { args["goals"] = v }
+        if let v = update.boundaries { args["boundaries"] = v }
+        if let v = update.thingsToKnow { args["thingsToKnow"] = v }
+        if let v = update.thingsToAvoid { args["thingsToAvoid"] = v }
+        try await service.mutationVoid("mirrors:updateMirrorProfile", args: args)
     }
 
     @discardableResult
     public func addMemory(type: MemoryType, visibility: MemoryVisibility, content: String) async throws -> String {
-        var args = ConvexArgs()
-        args.set("type", .string(type.rawValue))
-        args.set("visibility", .string(visibility.rawValue))
-        args.set("content", .string(content))
-        return try await client.mutation("memories:addMemory", args: args)
+        try await service.mutation("memories:addMemory", args: [
+            "type": type.rawValue,
+            "visibility": visibility.rawValue,
+            "content": content,
+        ])
     }
 
-    @discardableResult
     public func updateMemory(
         memoryId: String,
         type: MemoryType? = nil,
         visibility: MemoryVisibility? = nil,
         content: String? = nil
-    ) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        args.set("memoryId", .string(memoryId))
-        if let t = type { args.set("type", .string(t.rawValue)) }
-        if let v = visibility { args.set("visibility", .string(v.rawValue)) }
-        if let c = content { args.set("content", .string(c)) }
-        return try await client.mutation("memories:updateMemory", args: args)
+    ) async throws {
+        var args: [String: ConvexEncodable?] = ["memoryId": memoryId]
+        if let t = type { args["type"] = t.rawValue }
+        if let v = visibility { args["visibility"] = v.rawValue }
+        if let c = content { args["content"] = c }
+        try await service.mutationVoid("memories:updateMemory", args: args)
     }
 
-    @discardableResult
-    public func archiveMemory(memoryId: String, archived: Bool = true) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        args.set("memoryId", .string(memoryId))
-        args.set("archived", .bool(archived))
-        return try await client.mutation("memories:archiveMemory", args: args)
+    public func archiveMemory(memoryId: String, archived: Bool = true) async throws {
+        try await service.mutationVoid("memories:archiveMemory", args: [
+            "memoryId": memoryId, "archived": archived,
+        ])
     }
 
-    @discardableResult
-    public func deleteMemory(memoryId: String) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        args.set("memoryId", .string(memoryId))
-        return try await client.mutation("memories:deleteMemory", args: args)
+    public func deleteMemory(memoryId: String) async throws {
+        try await service.mutationVoid("memories:deleteMemory", args: ["memoryId": memoryId])
     }
 
     public func createFriendInvite() async throws -> InviteCodeResponse {
-        try await client.mutation("friends:createFriendInvite")
+        try await service.mutation("friends:createFriendInvite")
     }
 
     public func acceptFriendInvite(code: String) async throws -> AcceptInviteResponse {
-        var args = ConvexArgs()
-        args.set("inviteCode", .string(code))
-        return try await client.mutation("friends:acceptFriendInvite", args: args)
+        try await service.mutation("friends:acceptFriendInvite", args: ["inviteCode": code])
     }
 
-    @discardableResult
-    public func pauseFriendship(friendshipId: String, paused: Bool) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        args.set("friendshipId", .string(friendshipId))
-        args.set("paused", .bool(paused))
-        return try await client.mutation("friends:pauseFriendship", args: args)
+    public func pauseFriendship(friendshipId: String, paused: Bool) async throws {
+        try await service.mutationVoid("friends:pauseFriendship", args: [
+            "friendshipId": friendshipId, "paused": paused,
+        ])
     }
 
-    @discardableResult
-    public func removeFriendship(friendshipId: String, block: Bool = false) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        args.set("friendshipId", .string(friendshipId))
-        args.set("block", .bool(block))
-        return try await client.mutation("friends:removeFriendship", args: args)
+    public func removeFriendship(friendshipId: String, block: Bool = false) async throws {
+        try await service.mutationVoid("friends:removeFriendship", args: [
+            "friendshipId": friendshipId, "block": block,
+        ])
     }
 
-    @discardableResult
-    public func markNotificationRead(notificationId: String) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        args.set("notificationId", .string(notificationId))
-        return try await client.mutation("notifications:markNotificationRead", args: args)
+    public func markNotificationRead(notificationId: String) async throws {
+        try await service.mutationVoid("notifications:markNotificationRead", args: [
+            "notificationId": notificationId,
+        ])
     }
 
-    @discardableResult
-    public func setMirrorPaused(_ paused: Bool) async throws -> ConvexVoid {
-        var args = ConvexArgs()
-        args.set("paused", .bool(paused))
-        return try await client.mutation("settings:setMirrorPaused", args: args)
+    public func setMirrorPaused(_ paused: Bool) async throws {
+        try await service.mutationVoid("settings:setMirrorPaused", args: ["paused": paused])
     }
 
-    @discardableResult
-    public func deleteAccount() async throws -> ConvexVoid {
-        try await client.mutation("settings:deleteAccount")
+    public func deleteAccount() async throws {
+        try await service.mutationVoid("settings:deleteAccount")
     }
 
     // MARK: Actions
 
-    @discardableResult
-    public func generateMirrorBehaviour() async throws -> ConvexVoid {
-        try await client.action("mirrors:generateMirrorBehaviour")
+    public func generateMirrorBehaviour() async throws {
+        try await service.actionVoid("mirrors:generateMirrorBehaviour")
     }
 
     public func askMyMirror(question: String) async throws -> AskResponse {
-        var args = ConvexArgs()
-        args.set("question", .string(question))
-        return try await client.action("conversations:askMyMirror", args: args)
+        try await service.action("conversations:askMyMirror", args: ["question": question])
     }
 
     public func generateConversationNow(friendshipId: String) async throws -> GenerateConversationResponse {
-        var args = ConvexArgs()
-        args.set("friendshipId", .string(friendshipId))
-        return try await client.action("conversations:generateConversationNow", args: args)
+        try await service.action(
+            "conversations:generateConversationNow",
+            args: ["friendshipId": friendshipId]
+        )
     }
 }
 

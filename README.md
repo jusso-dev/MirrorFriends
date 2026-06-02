@@ -38,7 +38,7 @@ the app never talks to OpenAI directly.
     ├── Package.swift           # SPM manifest (Skip plugin)
     ├── Skip.env                # Skip product config
     └── Sources/
-        ├── MirrorModel/        # Shared model layer (Codable models + Convex client)
+        ├── MirrorModel/        # Shared model layer (Codable models + native Convex SDK wrapper)
         └── MirrorApp/          # SwiftUI app (screens + view models)
 ```
 
@@ -164,10 +164,12 @@ swift build                    # builds + transpiles
 # Android: skip launches the Gradle build for the Android target
 ```
 
-The Swift sources under `Sources/` are the single source of truth; Skip
-transpiles `MirrorModel` and `MirrorApp` to Kotlin for the Android build. See
-[MirrorApp/PLATFORMS.md](MirrorApp/PLATFORMS.md) for details on the per-platform
-shells and the optional native `convex-swift` client.
+The app uses the **native Convex Swift SDK** (`convex-swift` / `ConvexMobile`),
+wrapped by `MirrorModel/ConvexService.swift` — a live WebSocket with auth,
+reactive `subscribe`, and one-shot `query`. The Swift sources under `Sources/`
+are the single source of truth; Skip transpiles `MirrorModel` and `MirrorApp` to
+Kotlin for the Android build. See [MirrorApp/PLATFORMS.md](MirrorApp/PLATFORMS.md)
+for the per-platform shells and the Android client note.
 
 ### Tests
 

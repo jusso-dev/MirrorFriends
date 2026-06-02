@@ -3,9 +3,9 @@ import Combine
 import MirrorModel
 
 // ===========================================================================
-// AppState — the root observable orchestrator. Owns the Convex client, the API
-// facade, and the auth manager; exposes the current routing phase and the
-// signed-in user/Mirror. Screens read from here and call its methods.
+// AppState — the root observable orchestrator. Owns the native Convex service,
+// the API facade, and the auth manager; exposes the current routing phase and
+// the signed-in user/Mirror. Screens read from here and call its methods.
 // ===========================================================================
 
 public enum AppPhase: Equatable, Sendable {
@@ -22,16 +22,15 @@ public final class AppState: ObservableObject {
     @Published public private(set) var mirror: Mirror?
     @Published public var lastError: String?
 
+    public let service: ConvexService
     public let auth: AuthManager
     public let api: MirrorAPI
 
-    private var authObserver: AnyCancellable?
-
-    public init(auth: AuthManager? = nil) {
-        let authManager = auth ?? AuthManager()
-        self.auth = authManager
-        let client = ConvexHTTPClient(deploymentUrl: AppConfig.convexURL, auth: authManager)
-        self.api = MirrorAPI(client: client)
+    public init(backend: AuthBackend = StubAuthBackend()) {
+        let service = ConvexService(deploymentUrl: AppConfig.convexURL)
+        self.service = service
+        self.api = MirrorAPI(service: service)
+        self.auth = AuthManager(service: service, backend: backend)
     }
 
     /// Called once on launch. Restores any session and routes accordingly.
@@ -55,8 +54,8 @@ public final class AppState: ObservableObject {
     }
 
     public func signInWithToken(_ jwt: String) async {
-        auth.signInWithToken(jwt)
-        await loadSession()
+        await auth.signInWithToken(jwt)
+        if auth.isSignedIn { await loadSession() }
     }
 
     public func signOut() async {
@@ -72,8 +71,7 @@ public final class AppState: ObservableObject {
             _ = try await api.ensureUser()
             try await refreshUser()
         } catch {
-            lastError = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
-            // Stay signed in but show the error; user can retry.
+            lastError = friendlyMessage(error)
             phase = .signedOut
         }
     }
@@ -94,7 +92,7 @@ public final class AppState: ObservableObject {
             _ = try await api.completeOnboarding(input)
             try await refreshUser()
         } catch {
-            lastError = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+            lastError = friendlyMessage(error)
         }
     }
 

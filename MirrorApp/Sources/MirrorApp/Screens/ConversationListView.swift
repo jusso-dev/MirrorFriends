@@ -65,7 +65,7 @@ struct ConversationListView: View {
         loading = true
         error = nil
         do { items = try await app.api.listMirrorConversations() }
-        catch { self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription }
+        catch { self.error = friendlyMessage(error) }
         loading = false
     }
 }
@@ -121,7 +121,7 @@ struct ConversationDetailView: View {
         loading = true
         error = nil
         do { thread = try await app.api.listConversationMessages(conversationId: item.conversation.id) }
-        catch { self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription }
+        catch { self.error = friendlyMessage(error) }
         loading = false
     }
 }

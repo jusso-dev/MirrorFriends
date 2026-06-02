@@ -5,17 +5,19 @@ import MirrorModel
 // ===========================================================================
 // Authentication.
 //
-// MirrorFriends supports Email / Apple / Google sign-in. The actual identity
-// provider (Clerk recommended, or Convex Auth) issues a JWT that Convex
-// validates server-side (see convex/auth.config.ts).
+// MirrorFriends supports Email / Apple / Google sign-in. An identity provider
+// (Clerk recommended, or Convex Auth / Auth0) issues a JWT that Convex
+// validates server-side (convex/auth.config.ts).
 //
-// This manager abstracts that flow behind a small surface:
-//   - `signIn(...)` obtains a token from the provider.
-//   - `currentToken()` (AuthTokenProvider) hands the token to the Convex client.
+// The flow with the native Convex SDK:
+//   1. `AuthBackend.signIn(...)` obtains a JWT from the IdP.
+//   2. We store it in the SDK's `TokenStore`.
+//   3. `ConvexService.login()` activates it on the live connection (the
+//      ConvexMobile AuthProvider reads the token from the store).
 //
-// To wire Clerk: implement `ClerkAuthBackend` using the Clerk iOS SDK on Darwin
-// and the Clerk Android SDK on Android (Skip lets you bridge per-platform). For
-// local development you can paste a JWT via `signInWithToken(_:)`.
+// To wire Clerk: implement `AuthBackend` with the Clerk SDK on Darwin / the
+// Clerk Android SDK on Android, returning the session JWT. For local dev you can
+// paste a JWT via `signInWithToken(_:)`.
 // ===========================================================================
 
 public enum AuthMethod: String, Sendable {
@@ -30,50 +32,61 @@ public enum AuthState: Equatable, Sendable {
 }
 
 @MainActor
-public final class AuthManager: ObservableObject, AuthTokenProvider {
+public final class AuthManager: ObservableObject {
     @Published public private(set) var state: AuthState = .signedOut
 
-    private var token: String?
+    private let service: ConvexService
     private let backend: AuthBackend
 
-    public init(backend: AuthBackend = StubAuthBackend()) {
+    public init(service: ConvexService, backend: AuthBackend = StubAuthBackend()) {
+        self.service = service
         self.backend = backend
-    }
-
-    // AuthTokenProvider — called by the Convex client on every request.
-    nonisolated public func currentToken() async -> String? {
-        await MainActor.run { self.token }
     }
 
     public var isSignedIn: Bool { state == .signedIn }
 
+    /// Attempt to restore a cached session on launch.
     public func restoreSession() async {
-        if let restored = await backend.restoreToken() {
-            token = restored
+        guard let token = await backend.restoreToken() else {
+            state = .signedOut
+            return
+        }
+        await service.tokenStore.set(token)
+        if case .success = await service.loginFromCache() {
             state = .signedIn
+        } else {
+            state = .signedOut
         }
     }
 
     public func signIn(method: AuthMethod, email: String? = nil, password: String? = nil) async {
         state = .authenticating
         do {
-            let newToken = try await backend.signIn(method: method, email: email, password: password)
-            token = newToken
-            state = .signedIn
+            let token = try await backend.signIn(method: method, email: email, password: password)
+            await activate(token)
         } catch {
-            state = .error(error.localizedDescription)
+            state = .error(friendlyMessage(error))
         }
     }
 
     /// Dev convenience: sign in by pasting a JWT (e.g. from the Clerk dashboard).
-    public func signInWithToken(_ jwt: String) {
-        token = jwt
-        state = .signedIn
+    public func signInWithToken(_ jwt: String) async {
+        await activate(jwt)
+    }
+
+    private func activate(_ token: String) async {
+        await service.tokenStore.set(token)
+        switch await service.login() {
+        case .success:
+            state = .signedIn
+        case .failure(let error):
+            state = .error(friendlyMessage(error))
+        }
     }
 
     public func signOut() async {
+        await service.logout()
         await backend.signOut()
-        token = nil
         state = .signedOut
     }
 }
@@ -86,14 +99,14 @@ public protocol AuthBackend: Sendable {
 }
 
 /// Placeholder backend used until a real provider is wired. It does NOT produce
-/// a valid Convex JWT — replace with Clerk/Convex Auth before shipping. It lets
-/// the UI and navigation be exercised end-to-end in development.
+/// a valid Convex JWT — replace with Clerk/Convex Auth before shipping. The
+/// "Developer sign-in" on the Auth screen (paste a JWT) lets you exercise the
+/// full app end-to-end against a real deployment in the meantime.
 public struct StubAuthBackend: AuthBackend {
     public init() {}
     public func restoreToken() async -> String? { nil }
     public func signIn(method: AuthMethod, email: String?, password: String?) async throws -> String {
-        // Surface a clear message rather than silently "succeeding".
-        throw ConvexFunctionError.notConfigured
+        throw ConvexServiceError.notAuthenticated
     }
     public func signOut() async {}
 }

@@ -58,7 +58,7 @@ struct FriendsView: View {
         do {
             friends = try await app.api.listMyFriends()
         } catch {
-            self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+            self.error = friendlyMessage(error)
         }
         loading = false
     }
@@ -161,7 +161,7 @@ struct InviteSheet: View {
             }
             .task {
                 do { code = try await app.api.createFriendInvite().inviteCode }
-                catch { self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription }
+                catch { self.error = friendlyMessage(error) }
             }
         }
     }
@@ -210,7 +210,7 @@ struct AcceptInviteSheet: View {
                 await onAccepted()
                 dismiss()
             } catch {
-                self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+                self.error = friendlyMessage(error)
             }
             working = false
         }

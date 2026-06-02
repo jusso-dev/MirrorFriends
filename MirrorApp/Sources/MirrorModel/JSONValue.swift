@@ -1,8 +1,10 @@
 import Foundation
 
 // ===========================================================================
-// A minimal JSON value type used to build Convex function arguments in a
-// type-safe, Codable, Skip-compatible way (Skip cannot transpile `[String: Any]`).
+// A small Codable JSON value. Used where the shape is dynamic — decoding the
+// data-export blob (`settings:exportMyData`) and unwrapping structured backend
+// error payloads. Function *arguments* use plain `[String: ConvexEncodable?]`
+// dictionaries handled by the native Convex SDK, so no arg builder is needed.
 // ===========================================================================
 
 public indirect enum JSONValue: Codable, Sendable, Equatable {
@@ -43,23 +45,4 @@ public indirect enum JSONValue: Codable, Sendable, Equatable {
         case .object(let o): try c.encode(o)
         }
     }
-}
-
-// Ergonomic builders.
-public extension JSONValue {
-    static func of(_ value: String) -> JSONValue { .string(value) }
-    static func of(_ value: Bool) -> JSONValue { .bool(value) }
-    static func of(_ value: Int) -> JSONValue { .number(Double(value)) }
-    static func of(_ value: Double) -> JSONValue { .number(value) }
-    static func of(_ values: [String]) -> JSONValue { .array(values.map { .string($0) }) }
-}
-
-/// Convenience for the common "object of named arguments" case.
-public struct ConvexArgs: Sendable {
-    public private(set) var fields: [String: JSONValue]
-    public init(_ fields: [String: JSONValue] = [:]) { self.fields = fields }
-    public mutating func set(_ key: String, _ value: JSONValue) { fields[key] = value }
-    public var json: JSONValue { .object(fields) }
-
-    public static let empty = ConvexArgs()
 }

@@ -30,9 +30,9 @@ struct SettingsView: View {
 
             Section("AI usage estimate") {
                 if let usage {
-                    usageRow("Calls", "\(usage.calls)")
-                    usageRow("Input tokens", "\(usage.inputTokens)")
-                    usageRow("Output tokens", "\(usage.outputTokens)")
+                    usageRow("Calls", "\(Int(usage.calls))")
+                    usageRow("Input tokens", "\(Int(usage.inputTokens))")
+                    usageRow("Output tokens", "\(Int(usage.outputTokens))")
                     usageRow("Estimated cost", String(format: "$%.4f", usage.estimatedCostUsd))
                 } else {
                     ProgressView()
@@ -88,19 +88,19 @@ struct SettingsView: View {
     private func load() async {
         paused = app.currentUser?.mirrorPaused ?? false
         do { usage = try await app.api.getAiUsageEstimate() }
-        catch { self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription }
+        catch { self.error = friendlyMessage(error) }
     }
 
     private func exportData() async {
         exporting = true
         do {
-            let data: JSONValue = try await app.api.client.query("settings:exportMyData")
+            let data = try await app.api.exportMyData()
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted]
             let raw = try encoder.encode(data)
             exportText = String(data: raw, encoding: .utf8)
         } catch {
-            self.error = (error as? ConvexFunctionError)?.errorDescription ?? error.localizedDescription
+            self.error = friendlyMessage(error)
         }
         exporting = false
     }

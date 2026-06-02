@@ -285,10 +285,11 @@ public struct ConversationThread: Codable, Sendable {
     public var messages: [MirrorMessage]
 }
 
-/// Response of `settings:getAiUsageEstimate`.
+/// Response of `settings:getAiUsageEstimate`. Counts are modelled as `Double`
+/// because Convex `v.number()` is float64; format them as integers in the UI.
 public struct AiUsageEstimate: Codable, Sendable {
-    public var calls: Int
-    public var inputTokens: Int
-    public var outputTokens: Int
+    public var calls: Double
+    public var inputTokens: Double
+    public var outputTokens: Double
     public var estimatedCostUsd: Double
 }
