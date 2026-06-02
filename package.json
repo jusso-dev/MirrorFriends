@@ -1,0 +1,20 @@
+{
+  "name": "mirrorfriends-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MirrorFriends Convex backend — AI Mirrors that talk to each other.",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "convex run tests:run"
+  },
+  "dependencies": {
+    "convex": "^1.17.0",
+    "openai": "^4.67.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
