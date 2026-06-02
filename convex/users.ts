@@ -1,16 +1,19 @@
-import { query, mutation, internalMutation } from "./_generated/server";
-import { v, ConvexError } from "convex/values";
-import { getCurrentUserOrNull, requireUser } from "./auth";
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { getCurrentUserOrNull, requireUser, normaliseUser } from "./authz";
 import { internal } from "./_generated/api";
-import { Doc } from "./_generated/dataModel";
 
 // ---------------------------------------------------------------------------
 // Users + onboarding.
+//
+// The `users` row itself is created by Convex Auth on first sign-in (see
+// auth.ts). This module fills in the app profile and creates the Mirror.
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the current user along with their Mirror (if any). The mobile app
- * calls this on launch to decide whether to show auth, onboarding, or home.
+ * Returns the current user (with normalised boolean flags) along with their
+ * Mirror (if any). The mobile app calls this on launch to decide whether to
+ * show onboarding or home.
  */
 export const getCurrentUser = query({
   args: {},
@@ -21,58 +24,7 @@ export const getCurrentUser = query({
       .query("mirrors")
       .withIndex("by_owner", (q) => q.eq("ownerUserId", user._id))
       .unique();
-    return { user, mirror: mirror ?? null };
-  },
-});
-
-/**
- * Idempotently provision a `users` row for the authenticated identity. Safe to
- * call on every app launch. Returns the user row.
- *
- * This is the single entry point that maps an external auth subject to our
- * internal user. It does NOT complete onboarding or create a Mirror.
- */
-export const ensureUser = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new ConvexError({
-        code: "UNAUTHENTICATED",
-        message: "You must be signed in.",
-      });
-    }
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_subject", (q) => q.eq("subject", identity.subject))
-      .unique();
-    if (existing) {
-      // Keep email/name fresh from the identity provider.
-      const patch: Partial<Doc<"users">> = {};
-      if (identity.email && identity.email !== existing.email) {
-        patch.email = identity.email;
-      }
-      if (identity.name && !existing.name) {
-        patch.name = identity.name;
-      }
-      if (Object.keys(patch).length > 0) {
-        patch.updatedAt = Date.now();
-        await ctx.db.patch(existing._id, patch);
-      }
-      return existing._id;
-    }
-
-    const now = Date.now();
-    const userId = await ctx.db.insert("users", {
-      subject: identity.subject,
-      email: identity.email,
-      name: identity.name,
-      onboardingComplete: false,
-      mirrorPaused: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-    return userId;
+    return { user: normaliseUser(user), mirror: mirror ?? null };
   },
 });
 
@@ -104,6 +56,8 @@ export const completeOnboarding = mutation({
       nickname: args.nickname,
       bio: args.bio,
       onboardingComplete: true,
+      mirrorPaused: user.mirrorPaused ?? false,
+      createdAt: user.createdAt ?? now,
       updatedAt: now,
     });
 
@@ -208,12 +162,4 @@ export const completeOnboarding = mutation({
 
     return { userId: user._id, mirrorId: mirror!._id };
   },
-});
-
-/**
- * Internal: look up a user by id (used by actions which cannot read the db).
- */
-export const getUserById = internalMutation({
-  args: { userId: v.id("users") },
-  handler: async (ctx, args) => ctx.db.get(args.userId),
 });

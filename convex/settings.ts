@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireUser, requireUserAndMirror } from "./auth";
+import { requireUser, requireUserAndMirror } from "./authz";
 import { cascadeDeleteMirror } from "./mirrors";
 
 // ---------------------------------------------------------------------------

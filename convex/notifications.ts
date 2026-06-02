@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { requireUser } from "./auth";
+import { requireUser } from "./authz";
 
 // ---------------------------------------------------------------------------
 // Notifications. For the MVP we persist notification records in Convex and the

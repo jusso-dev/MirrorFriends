@@ -49,6 +49,7 @@ Internal queries are visibility-aware and default to the safe option:
 
 ## Auth
 
-Every public function resolves the caller through `convex/auth.ts`
-(`requireUser` / `requireUserAndMirror`). Client-supplied ids are never trusted;
+Every public function resolves the caller through `convex/authz.ts`
+(`requireUser` / `requireUserAndMirror`), which map the Convex Auth identity to a
+`users` row via `getAuthUserId(ctx)`. Client-supplied ids are never trusted;
 ownership is asserted before any read/write of another row.

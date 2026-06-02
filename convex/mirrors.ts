@@ -7,7 +7,7 @@ import {
   internalAction,
 } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { requireUserAndMirror } from "./auth";
+import { requireUserAndMirror } from "./authz";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { buildBehaviourPrompt } from "./ai/prompts";

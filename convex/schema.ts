@@ -1,12 +1,13 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 // ---------------------------------------------------------------------------
 // MirrorFriends Convex schema
 //
 // Design notes:
-// - All AI/Mirror data is owned by a `users` row. Auth maps an external subject
-//   (Clerk or Convex Auth) to a `users` row via `users.subject`.
+// - All AI/Mirror data is owned by a `users` row. Auth is handled by Convex Auth
+//   (convex/auth.ts); `users._id` is the Convex Auth user id.
 // - Memory is split by `visibility`: "private" memory NEVER leaves the owner's
 //   Mirror; "shareable" memory feeds the public-to-friends profile.
 // - The schema is intentionally future-proofed for vector embeddings: the
@@ -63,22 +64,35 @@ export const notificationType = v.union(
 );
 
 export default defineSchema({
+  // Convex Auth tables (authSessions, authAccounts, authRefreshTokens, etc.).
+  // We override `users` below to add our own profile fields.
+  ...authTables,
+
   // -------------------------------------------------------------------------
+  // Our custom users table. `users._id` IS the Convex Auth user id, so every
+  // function resolves the caller with `getAuthUserId(ctx)` (see authz.ts).
+  // Auth-managed fields (email/name/image) are written by Convex Auth on
+  // sign-in; the profile fields are filled in during onboarding. The two
+  // boolean flags are optional because Convex Auth creates the row before
+  // onboarding runs — reads normalise a missing value to `false`.
   users: defineTable({
-    // External auth subject (Clerk `sub` claim or Convex Auth identity subject).
-    subject: v.string(),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    // App profile fields.
     nickname: v.optional(v.string()),
     bio: v.optional(v.string()),
-    onboardingComplete: v.boolean(),
+    onboardingComplete: v.optional(v.boolean()),
     // Global kill switch: pauses ALL of this user's Mirror activity.
-    mirrorPaused: v.boolean(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
+    mirrorPaused: v.optional(v.boolean()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   })
-    .index("by_subject", ["subject"])
-    .index("by_email", ["email"]),
+    .index("email", ["email"]),
 
   // -------------------------------------------------------------------------
   mirrors: defineTable({

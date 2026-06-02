@@ -1,13 +1,10 @@
 import Foundation
-import ConvexMobile
 
 // ===========================================================================
-// MirrorAPI — a typed facade over the Convex function surface, built on the
-// native ConvexService. Function names and argument shapes live here in one
-// place and stay in sync with the Convex modules under /convex.
-//
-// Numeric arguments are sent as `Double` so they match the backend's
-// `v.number()` (float64) validators.
+// MirrorAPI — a typed facade over the Convex function surface, built on
+// ConvexService. Arguments are platform-neutral `[String: JSONValue]` maps so
+// the same calls work on iOS (ConvexMobile) and Android (the Kotlin bridge).
+// Numeric arguments are sent as numbers (float64) to match `v.number()`.
 // ===========================================================================
 
 public struct OnboardingInput: Sendable {
@@ -91,9 +88,9 @@ public struct MirrorAPI: Sendable {
         type: MemoryType? = nil,
         includeArchived: Bool = false
     ) async throws -> [Memory] {
-        var args: [String: ConvexEncodable?] = ["includeArchived": includeArchived]
-        if let v = visibility { args["visibility"] = v.rawValue }
-        if let t = type { args["type"] = t.rawValue }
+        var args: [String: JSONValue] = ["includeArchived": .flag(includeArchived)]
+        if let v = visibility { args["visibility"] = .str(v.rawValue) }
+        if let t = type { args["type"] = .str(t.rawValue) }
         return try await service.query("memories:listMyMemories", args: args)
     }
 
@@ -102,29 +99,29 @@ public struct MirrorAPI: Sendable {
     }
 
     public func listMirrorConversations(limit: Int? = nil) async throws -> [ConversationSummary] {
-        var args: [String: ConvexEncodable?] = [:]
-        if let l = limit { args["limit"] = Double(l) }
+        var args: [String: JSONValue] = [:]
+        if let l = limit { args["limit"] = .num(l) }
         return try await service.query("conversations:listMirrorConversations", args: args)
     }
 
     public func listConversationMessages(conversationId: String) async throws -> ConversationThread {
         try await service.query(
             "conversations:listConversationMessages",
-            args: ["conversationId": conversationId]
+            args: ["conversationId": .str(conversationId)]
         )
     }
 
     public func listAssistantMessages(limit: Int = 50) async throws -> [AssistantMessage] {
         try await service.query(
             "conversations:listAssistantMessages",
-            args: ["limit": Double(limit)]
+            args: ["limit": .num(limit)]
         )
     }
 
     public func listNotifications(unreadOnly: Bool = false) async throws -> [AppNotification] {
         try await service.query(
             "notifications:listNotifications",
-            args: ["unreadOnly": unreadOnly]
+            args: ["unreadOnly": .flag(unreadOnly)]
         )
     }
 
@@ -144,48 +141,43 @@ public struct MirrorAPI: Sendable {
     // MARK: Mutations
 
     @discardableResult
-    public func ensureUser() async throws -> String {
-        try await service.mutation("users:ensureUser")
-    }
-
-    @discardableResult
     public func completeOnboarding(_ input: OnboardingInput) async throws -> OnboardingResult {
-        var args: [String: ConvexEncodable?] = [
-            "name": input.name,
-            "interests": input.interests,
-            "privacyBoundaries": input.privacyBoundaries,
+        var args: [String: JSONValue] = [
+            "name": .str(input.name),
+            "interests": .strings(input.interests),
+            "privacyBoundaries": .strings(input.privacyBoundaries),
         ]
-        if let v = input.nickname { args["nickname"] = v }
-        if let v = input.bio { args["bio"] = v }
-        if let v = input.work { args["work"] = v }
-        if let v = input.communicationStyle { args["communicationStyle"] = v }
-        if let v = input.thingsToKnow { args["thingsToKnow"] = v }
-        if let v = input.thingsToAvoid { args["thingsToAvoid"] = v }
-        if let v = input.mirrorName { args["mirrorName"] = v }
-        if let v = input.avatarEmoji { args["avatarEmoji"] = v }
+        if let v = input.nickname { args["nickname"] = .str(v) }
+        if let v = input.bio { args["bio"] = .str(v) }
+        if let v = input.work { args["work"] = .str(v) }
+        if let v = input.communicationStyle { args["communicationStyle"] = .str(v) }
+        if let v = input.thingsToKnow { args["thingsToKnow"] = .str(v) }
+        if let v = input.thingsToAvoid { args["thingsToAvoid"] = .str(v) }
+        if let v = input.mirrorName { args["mirrorName"] = .str(v) }
+        if let v = input.avatarEmoji { args["avatarEmoji"] = .str(v) }
         return try await service.mutation("users:completeOnboarding", args: args)
     }
 
     public func updateMirrorProfile(_ update: MirrorProfileUpdate) async throws {
-        var args: [String: ConvexEncodable?] = [:]
-        if let v = update.name { args["name"] = v }
-        if let v = update.avatarEmoji { args["avatarEmoji"] = v }
-        if let v = update.personality { args["personality"] = v }
-        if let v = update.communicationStyle { args["communicationStyle"] = v }
-        if let v = update.interests { args["interests"] = v }
-        if let v = update.goals { args["goals"] = v }
-        if let v = update.boundaries { args["boundaries"] = v }
-        if let v = update.thingsToKnow { args["thingsToKnow"] = v }
-        if let v = update.thingsToAvoid { args["thingsToAvoid"] = v }
+        var args: [String: JSONValue] = [:]
+        if let v = update.name { args["name"] = .str(v) }
+        if let v = update.avatarEmoji { args["avatarEmoji"] = .str(v) }
+        if let v = update.personality { args["personality"] = .str(v) }
+        if let v = update.communicationStyle { args["communicationStyle"] = .str(v) }
+        if let v = update.interests { args["interests"] = .strings(v) }
+        if let v = update.goals { args["goals"] = .strings(v) }
+        if let v = update.boundaries { args["boundaries"] = .strings(v) }
+        if let v = update.thingsToKnow { args["thingsToKnow"] = .str(v) }
+        if let v = update.thingsToAvoid { args["thingsToAvoid"] = .str(v) }
         try await service.mutationVoid("mirrors:updateMirrorProfile", args: args)
     }
 
     @discardableResult
     public func addMemory(type: MemoryType, visibility: MemoryVisibility, content: String) async throws -> String {
         try await service.mutation("memories:addMemory", args: [
-            "type": type.rawValue,
-            "visibility": visibility.rawValue,
-            "content": content,
+            "type": .str(type.rawValue),
+            "visibility": .str(visibility.rawValue),
+            "content": .str(content),
         ])
     }
 
@@ -195,21 +187,21 @@ public struct MirrorAPI: Sendable {
         visibility: MemoryVisibility? = nil,
         content: String? = nil
     ) async throws {
-        var args: [String: ConvexEncodable?] = ["memoryId": memoryId]
-        if let t = type { args["type"] = t.rawValue }
-        if let v = visibility { args["visibility"] = v.rawValue }
-        if let c = content { args["content"] = c }
+        var args: [String: JSONValue] = ["memoryId": .str(memoryId)]
+        if let t = type { args["type"] = .str(t.rawValue) }
+        if let v = visibility { args["visibility"] = .str(v.rawValue) }
+        if let c = content { args["content"] = .str(c) }
         try await service.mutationVoid("memories:updateMemory", args: args)
     }
 
     public func archiveMemory(memoryId: String, archived: Bool = true) async throws {
         try await service.mutationVoid("memories:archiveMemory", args: [
-            "memoryId": memoryId, "archived": archived,
+            "memoryId": .str(memoryId), "archived": .flag(archived),
         ])
     }
 
     public func deleteMemory(memoryId: String) async throws {
-        try await service.mutationVoid("memories:deleteMemory", args: ["memoryId": memoryId])
+        try await service.mutationVoid("memories:deleteMemory", args: ["memoryId": .str(memoryId)])
     }
 
     public func createFriendInvite() async throws -> InviteCodeResponse {
@@ -217,29 +209,29 @@ public struct MirrorAPI: Sendable {
     }
 
     public func acceptFriendInvite(code: String) async throws -> AcceptInviteResponse {
-        try await service.mutation("friends:acceptFriendInvite", args: ["inviteCode": code])
+        try await service.mutation("friends:acceptFriendInvite", args: ["inviteCode": .str(code)])
     }
 
     public func pauseFriendship(friendshipId: String, paused: Bool) async throws {
         try await service.mutationVoid("friends:pauseFriendship", args: [
-            "friendshipId": friendshipId, "paused": paused,
+            "friendshipId": .str(friendshipId), "paused": .flag(paused),
         ])
     }
 
     public func removeFriendship(friendshipId: String, block: Bool = false) async throws {
         try await service.mutationVoid("friends:removeFriendship", args: [
-            "friendshipId": friendshipId, "block": block,
+            "friendshipId": .str(friendshipId), "block": .flag(block),
         ])
     }
 
     public func markNotificationRead(notificationId: String) async throws {
         try await service.mutationVoid("notifications:markNotificationRead", args: [
-            "notificationId": notificationId,
+            "notificationId": .str(notificationId),
         ])
     }
 
     public func setMirrorPaused(_ paused: Bool) async throws {
-        try await service.mutationVoid("settings:setMirrorPaused", args: ["paused": paused])
+        try await service.mutationVoid("settings:setMirrorPaused", args: ["paused": .flag(paused)])
     }
 
     public func deleteAccount() async throws {
@@ -253,13 +245,13 @@ public struct MirrorAPI: Sendable {
     }
 
     public func askMyMirror(question: String) async throws -> AskResponse {
-        try await service.action("conversations:askMyMirror", args: ["question": question])
+        try await service.action("conversations:askMyMirror", args: ["question": .str(question)])
     }
 
     public func generateConversationNow(friendshipId: String) async throws -> GenerateConversationResponse {
         try await service.action(
             "conversations:generateConversationNow",
-            args: ["friendshipId": friendshipId]
+            args: ["friendshipId": .str(friendshipId)]
         )
     }
 }

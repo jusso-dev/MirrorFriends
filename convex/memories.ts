@@ -1,6 +1,6 @@
 import { query, mutation, internalQuery } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { requireUserAndMirror } from "./auth";
+import { requireUserAndMirror } from "./authz";
 import { memoryType, memoryVisibility } from "./schema";
 import { internal } from "./_generated/api";
 

@@ -10,6 +10,7 @@ struct AuthView: View {
     @EnvironmentObject var app: AppState
     @State private var email = ""
     @State private var password = ""
+    @State private var createAccount = false
     @State private var showTokenField = false
     @State private var devToken = ""
 
@@ -35,19 +36,32 @@ struct AuthView: View {
             }
 
             VStack(spacing: 12) {
+                Picker("", selection: $createAccount) {
+                    Text("Sign in").tag(false)
+                    Text("Create account").tag(true)
+                }
+                .pickerStyle(.segmented)
+
                 TextField("Email", text: $email)
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                 SecureField("Password", text: $password)
                     .textFieldStyle(.roundedBorder)
 
                 Button {
-                    Task { await app.signIn(method: .email, email: email, password: password) }
+                    Task {
+                        await app.signIn(
+                            method: .email, email: email, password: password,
+                            createAccount: createAccount
+                        )
+                    }
                 } label: {
-                    Text("Continue with Email").frame(maxWidth: .infinity)
+                    Text(createAccount ? "Create account" : "Sign in with Email")
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(email.isEmpty || isAuthenticating)
+                .disabled(email.isEmpty || password.isEmpty || isAuthenticating)
 
                 Button {
                     Task { await app.signIn(method: .apple) }

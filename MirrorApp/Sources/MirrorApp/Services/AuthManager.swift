@@ -38,7 +38,7 @@ public final class AuthManager: ObservableObject {
     private let service: ConvexService
     private let backend: AuthBackend
 
-    public init(service: ConvexService, backend: AuthBackend = StubAuthBackend()) {
+    public init(service: ConvexService, backend: AuthBackend) {
         self.service = service
         self.backend = backend
     }
@@ -52,17 +52,24 @@ public final class AuthManager: ObservableObject {
             return
         }
         await service.tokenStore.set(token)
-        if case .success = await service.loginFromCache() {
+        if await service.login() {
             state = .signedIn
         } else {
             state = .signedOut
         }
     }
 
-    public func signIn(method: AuthMethod, email: String? = nil, password: String? = nil) async {
+    public func signIn(
+        method: AuthMethod,
+        email: String? = nil,
+        password: String? = nil,
+        createAccount: Bool = false
+    ) async {
         state = .authenticating
         do {
-            let token = try await backend.signIn(method: method, email: email, password: password)
+            let token = try await backend.signIn(
+                method: method, email: email, password: password, createAccount: createAccount
+            )
             await activate(token)
         } catch {
             state = .error(friendlyMessage(error))
@@ -76,11 +83,10 @@ public final class AuthManager: ObservableObject {
 
     private func activate(_ token: String) async {
         await service.tokenStore.set(token)
-        switch await service.login() {
-        case .success:
+        if await service.login() {
             state = .signedIn
-        case .failure(let error):
-            state = .error(friendlyMessage(error))
+        } else {
+            state = .error("Could not establish an authenticated session.")
         }
     }
 
@@ -91,22 +97,31 @@ public final class AuthManager: ObservableObject {
     }
 }
 
-/// The pluggable identity backend. Conform to this with Clerk / Convex Auth.
+/// The pluggable identity backend. The default is `ConvexAuthBackend`.
 public protocol AuthBackend: Sendable {
+    /// Return a fresh access token from a cached session, or nil.
     func restoreToken() async -> String?
-    func signIn(method: AuthMethod, email: String?, password: String?) async throws -> String
+    /// Sign in (or, when `createAccount` is true, sign up) and return an access token.
+    func signIn(
+        method: AuthMethod,
+        email: String?,
+        password: String?,
+        createAccount: Bool
+    ) async throws -> String
     func signOut() async
 }
 
-/// Placeholder backend used until a real provider is wired. It does NOT produce
-/// a valid Convex JWT — replace with Clerk/Convex Auth before shipping. The
-/// "Developer sign-in" on the Auth screen (paste a JWT) lets you exercise the
-/// full app end-to-end against a real deployment in the meantime.
-public struct StubAuthBackend: AuthBackend {
-    public init() {}
-    public func restoreToken() async -> String? { nil }
-    public func signIn(method: AuthMethod, email: String?, password: String?) async throws -> String {
-        throw ConvexServiceError.notAuthenticated
+public enum AuthBackendError: Error, LocalizedError {
+    case missingCredentials
+    case oauthNotConfigured
+    case noTokens
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingCredentials: return "Enter your email and password."
+        case .oauthNotConfigured:
+            return "Apple/Google sign-in isn't configured yet. Use email, or set the OAuth provider secrets."
+        case .noTokens: return "Sign-in did not return a session. Check your credentials."
+        }
     }
-    public func signOut() async {}
 }

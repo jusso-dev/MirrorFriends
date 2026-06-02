@@ -26,10 +26,11 @@ public final class AppState: ObservableObject {
     public let auth: AuthManager
     public let api: MirrorAPI
 
-    public init(backend: AuthBackend = StubAuthBackend()) {
+    public init(makeBackend: ((ConvexService) -> AuthBackend)? = nil) {
         let service = ConvexService(deploymentUrl: AppConfig.convexURL)
         self.service = service
         self.api = MirrorAPI(service: service)
+        let backend = makeBackend?(service) ?? ConvexAuthBackend(service: service)
         self.auth = AuthManager(service: service, backend: backend)
     }
 
@@ -43,9 +44,15 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// Sign in then load the session.
-    public func signIn(method: AuthMethod, email: String? = nil, password: String? = nil) async {
-        await auth.signIn(method: method, email: email, password: password)
+    /// Sign in (or sign up) then load the session.
+    public func signIn(
+        method: AuthMethod,
+        email: String? = nil,
+        password: String? = nil,
+        createAccount: Bool = false
+    ) async {
+        lastError = nil
+        await auth.signIn(method: method, email: email, password: password, createAccount: createAccount)
         if auth.isSignedIn {
             await loadSession()
         } else if case let .error(message) = auth.state {
@@ -65,10 +72,10 @@ public final class AppState: ObservableObject {
         phase = .signedOut
     }
 
-    /// Provision the user (idempotent) and decide between onboarding and ready.
+    /// Load the signed-in user (Convex Auth has already provisioned the row) and
+    /// decide between onboarding and ready.
     public func loadSession() async {
         do {
-            _ = try await api.ensureUser()
             try await refreshUser()
         } catch {
             lastError = friendlyMessage(error)
