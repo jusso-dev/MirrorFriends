@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">MirrorFriends mark</title>
+  <desc id="desc">A futuristic hexagonal mirror network mark.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#082241"/>
+      <stop offset="100%" stop-color="#111a3a"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#8af2ff"/>
+      <stop offset="52%" stop-color="#39a9ff"/>
+      <stop offset="100%" stop-color="#b19cff"/>
+    </linearGradient>
+    <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <path d="M64 13 105 37v54L64 115 23 91V37Z" fill="#071426" stroke="url(#edge)" stroke-width="5" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M64 25v28M64 75v28M39 40l24 14M89 40 65 54M35 64h28M65 64h28M39 88l24-14M89 88 65 74" stroke="#76e9ff" stroke-width="4" stroke-linecap="round" opacity="0.86"/>
+  <path d="M50 48h28l14 24-14 24H50L36 72Z" fill="#0b213c" stroke="#e6fbff" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="64" cy="72" r="11" fill="#d9fbff"/>
+  <circle cx="36" cy="64" r="4" fill="#73eaff"/>
+  <circle cx="92" cy="64" r="4" fill="#b9a7ff"/>
+</svg>

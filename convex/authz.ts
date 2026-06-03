@@ -16,6 +16,21 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 
 export type AnyCtx = QueryCtx | MutationCtx | ActionCtx;
 
+export function configuredAdminEmails(): Set<string> {
+  return new Set(
+    [process.env.ADMIN_EMAIL, process.env.ADMIN_EMAILS]
+      .filter((value): value is string => Boolean(value))
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+export function isAdminUser(user: Doc<"users">): boolean {
+  const adminEmails = configuredAdminEmails();
+  return user.role === "admin" || (!!user.email && adminEmails.has(user.email.toLowerCase()));
+}
+
 /**
  * Resolve the `users` row for the current caller, or null if unauthenticated.
  * Only usable in query/mutation contexts (needs db access).
@@ -40,6 +55,19 @@ export async function requireUser(
     throw new ConvexError({
       code: "UNAUTHENTICATED",
       message: "You must be signed in to do that.",
+    });
+  }
+  return user;
+}
+
+export async function requireAdmin(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Doc<"users">> {
+  const user = await requireUser(ctx);
+  if (!isAdminUser(user)) {
+    throw new ConvexError({
+      code: "FORBIDDEN",
+      message: "Admin access is required.",
     });
   }
   return user;
@@ -88,6 +116,7 @@ export async function assertOwnsMirror(
 export function normaliseUser(user: Doc<"users">) {
   return {
     ...user,
+    role: isAdminUser(user) ? "admin" : user.role ?? "user",
     onboardingComplete: user.onboardingComplete ?? false,
     mirrorPaused: user.mirrorPaused ?? false,
   };

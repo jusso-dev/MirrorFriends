@@ -5,7 +5,7 @@ import { internal } from "../_generated/api";
 // ---------------------------------------------------------------------------
 // Minimal internal tool system.
 //
-// Tools are NOT exposed to the mobile app. They are helpers used inside Convex
+// Tools are NOT exposed to the browser app. They are helpers used inside Convex
 // actions to gather context for the model. Each tool enforces the privacy
 // boundary appropriate to its caller — e.g. `friendshipGetContext` only ever
 // returns the other Mirror's SHAREABLE profile.

@@ -12,7 +12,7 @@ import { internal } from "./_generated/api";
 
 /**
  * Returns the current user (with normalised boolean flags) along with their
- * Mirror (if any). The mobile app calls this on launch to decide whether to
+ * Mirror (if any). The web app calls this on launch to decide whether to
  * show onboarding or home.
  */
 export const getCurrentUser = query({

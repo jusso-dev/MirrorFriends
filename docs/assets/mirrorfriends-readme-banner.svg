@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 500" role="img" aria-labelledby="title desc">
+  <title id="title">MirrorFriends sci-fi banner logo</title>
+  <desc id="desc">A futuristic MirrorFriends banner with luminous mirror glyphs and a blue holographic network.</desc>
+  <defs>
+    <radialGradient id="coreGlow" cx="50%" cy="47%" r="52%">
+      <stop offset="0%" stop-color="#38d6ff" stop-opacity="0.42"/>
+      <stop offset="34%" stop-color="#245cff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#06111f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#071629"/>
+      <stop offset="45%" stop-color="#07111f"/>
+      <stop offset="100%" stop-color="#0d1b39"/>
+    </linearGradient>
+    <linearGradient id="chrome" x1="0" x2="1">
+      <stop offset="0%" stop-color="#7ff0ff"/>
+      <stop offset="45%" stop-color="#35a8ff"/>
+      <stop offset="100%" stop-color="#9e7bff"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" x2="1">
+      <stop offset="0%" stop-color="#eaf8ff"/>
+      <stop offset="45%" stop-color="#9feaff"/>
+      <stop offset="100%" stop-color="#c6b8ff"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.20 0 0 0 0 0.82 0 0 0 0 1 0 0 0 0.7 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#54d8ff" stroke-opacity="0.10" stroke-width="1"/>
+    </pattern>
+    <pattern id="micro" width="80" height="80" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="1" fill="#7de8ff" opacity="0.22"/>
+      <path d="M18 22h24v14h30M18 22v26h14" fill="none" stroke="#7de8ff" stroke-opacity="0.11" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="500" fill="url(#bg)"/>
+  <rect width="1600" height="500" fill="url(#grid)" opacity="0.75"/>
+  <rect width="1600" height="500" fill="url(#micro)" opacity="0.85"/>
+  <rect width="1600" height="500" fill="url(#coreGlow)"/>
+
+  <g opacity="0.7" fill="none" stroke="#6ddfff" stroke-width="1">
+    <path d="M95 420C310 290 440 245 640 252S980 310 1510 92" opacity="0.18"/>
+    <path d="M80 118C328 202 456 224 644 214s354-92 820 238" opacity="0.16"/>
+    <path d="M226 74h138l40 34h170" opacity="0.20"/>
+    <path d="M1180 102h116l34 34h178" opacity="0.20"/>
+    <path d="M102 318h184l46-44h122" opacity="0.18"/>
+    <path d="M1130 368h144l44-48h188" opacity="0.18"/>
+  </g>
+
+  <g filter="url(#glow)">
+    <path d="M800 94c83 0 151 67 151 151s-68 151-151 151-151-67-151-151S717 94 800 94Z" fill="none" stroke="url(#chrome)" stroke-width="2.2" opacity="0.52"/>
+    <path d="M800 135c60 0 109 49 109 110s-49 110-109 110-109-49-109-110 49-110 109-110Z" fill="none" stroke="#8eeeff" stroke-width="1.5" opacity="0.38"/>
+    <path d="M730 172 800 126l70 46v112l-70 46-70-46Z" fill="none" stroke="url(#chrome)" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M770 200h60l28 48-28 48h-60l-28-48Z" fill="#08192d" stroke="#d7fbff" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M800 126v74M800 296v34M730 172l42 28M870 172l-42 28M742 248h-60M858 248h60" stroke="#61e4ff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="800" cy="248" r="16" fill="#b9f7ff"/>
+    <circle cx="682" cy="248" r="6" fill="#7beaff"/>
+    <circle cx="918" cy="248" r="6" fill="#7beaff"/>
+  </g>
+
+  <g opacity="0.72" filter="url(#glow)">
+    <path d="M526 206 612 160l64 38v98l-80 44-70-38Z" fill="none" stroke="#58dfff" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M1084 206 998 160l-64 38v98l80 44 70-38Z" fill="none" stroke="#9f89ff" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M612 160c62 32 124 64 188 88M998 160c-62 32-124 64-198 88" stroke="#54dfff" stroke-width="2" stroke-dasharray="8 12" opacity="0.6"/>
+  </g>
+
+  <g transform="translate(145 178)">
+    <text x="0" y="0" fill="url(#word)" font-family="Avenir Next, Segoe UI, system-ui, sans-serif" font-size="82" font-weight="800" letter-spacing="1.5">MirrorFriends</text>
+    <text x="5" y="52" fill="#8cdff5" opacity="0.86" font-family="SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="600" letter-spacing="5">PERSONAL AI MIRRORS IN ORBIT</text>
+    <path d="M6 78h354l42-28h178" fill="none" stroke="url(#chrome)" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(1258 385)" fill="none" stroke="#62e4ff" stroke-width="2" opacity="0.62">
+    <path d="M0 0h185l22-22h66"/>
+    <circle cx="0" cy="0" r="4" fill="#62e4ff"/>
+    <circle cx="273" cy="-22" r="4" fill="#b9a7ff"/>
+  </g>
+
+  <rect x="18" y="18" width="1564" height="464" rx="22" fill="none" stroke="#86eaff" stroke-opacity="0.20"/>
+  <rect x="33" y="33" width="1534" height="434" rx="16" fill="none" stroke="#305cff" stroke-opacity="0.16"/>
+</svg>

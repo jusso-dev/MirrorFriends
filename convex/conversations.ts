@@ -14,14 +14,39 @@ import {
   buildAskMyMirrorPrompt,
   buildWeeklySummaryPrompt,
   MirrorSideContext,
+  type ConversationSeedContext,
+  type ConversationSharedGoal,
 } from "./ai/prompts";
+import { MESSAGES_PER_CHAT_WINDOW } from "./agent_schedule";
 
 // ---------------------------------------------------------------------------
 // Mirror conversations: viewing, daily generation, Ask My Mirror, weekly summary.
 // ---------------------------------------------------------------------------
 
-const MIN_MESSAGES = 4;
-const MAX_MESSAGES = 8;
+const CHAT_WINDOW_MESSAGES = MESSAGES_PER_CHAT_WINDOW;
+
+function shouldEnableWebSearch(question: string): boolean {
+  return /\b(web|internet|search|look up|lookup|latest|current|today|tonight|yesterday|tomorrow|news|recent|price|prices|weather|schedule|source|cite|citation|who won|what happened)\b/i.test(
+    question,
+  );
+}
+
+function appendSources(
+  text: string,
+  sources?: { title: string; url: string }[],
+): string {
+  if (!sources || sources.length === 0) return text;
+  const unique = new Map<string, string>();
+  for (const source of sources) {
+    if (!source.url) continue;
+    unique.set(source.url, source.title || source.url);
+  }
+  if (unique.size === 0) return text;
+  const lines = Array.from(unique.entries()).map(
+    ([url, title], index) => `${index + 1}. ${title}: ${url}`,
+  );
+  return `${text}\n\nSources:\n${lines.join("\n")}`;
+}
 
 // ===========================================================================
 // QUERIES (user-facing)
@@ -49,6 +74,7 @@ export const listMirrorConversations = query({
 
     const out: any[] = [];
     for (const f of friendships) {
+      if (f.status === "blocked") continue;
       const convos = await ctx.db
         .query("mirrorConversations")
         .withIndex("by_friendship_created", (q) => q.eq("friendshipId", f._id))
@@ -81,7 +107,7 @@ export const listConversationMessages = query({
     const convo = await ctx.db.get(args.conversationId);
     if (!convo) throw new ConvexError({ code: "NOT_FOUND", message: "No conversation." });
     const f = await ctx.db.get(convo.friendshipId);
-    if (!f || (f.mirrorAId !== mirror._id && f.mirrorBId !== mirror._id)) {
+    if (!f || f.status === "blocked" || (f.mirrorAId !== mirror._id && f.mirrorBId !== mirror._id)) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Not your conversation." });
     }
     const messages = await ctx.db
@@ -133,6 +159,51 @@ export const getRecentMessagesForFriendship = internalQuery({
   },
 });
 
+/** Messages from the latest completed saved chat, excluding a new pending run. */
+export const getLastCompletedConversationMessages = internalQuery({
+  args: {
+    friendshipId: v.id("friendships"),
+    excludeConversationId: v.optional(v.id("mirrorConversations")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const convos = await ctx.db
+      .query("mirrorConversations")
+      .withIndex("by_friendship_created", (q) =>
+        q.eq("friendshipId", args.friendshipId),
+      )
+      .order("desc")
+      .take(8);
+
+    const mirrorNameCache = new Map<string, string>();
+    for (const c of convos) {
+      if (args.excludeConversationId && c._id === args.excludeConversationId) continue;
+      if (c.status !== "complete") continue;
+
+      const msgs = await ctx.db
+        .query("mirrorMessages")
+        .withIndex("by_conversation_created", (q) => q.eq("conversationId", c._id))
+        .order("asc")
+        .collect();
+      if (msgs.length === 0) continue;
+
+      const out: { speaker: string; content: string }[] = [];
+      for (const m of msgs) {
+        let name = mirrorNameCache.get(m.senderMirrorId);
+        if (!name) {
+          const mir = await ctx.db.get(m.senderMirrorId);
+          name = mir?.name ?? "Mirror";
+          mirrorNameCache.set(m.senderMirrorId, name);
+        }
+        out.push({ speaker: name, content: m.content });
+      }
+      return out.slice(-(args.limit ?? 8));
+    }
+
+    return [];
+  },
+});
+
 /**
  * Build the full side-context for one Mirror in a friendship: profile, active
  * behaviour, and SHAREABLE highlights only. This is the data that may inform a
@@ -158,6 +229,18 @@ export const getMirrorSideContext = internalQuery({
       )
       .order("desc")
       .take(12);
+    const contentsForTypes = (types: string[]) =>
+      shareable.filter((m) => types.includes(m.type)).map((m) => m.content);
+    const categorizedTypes = new Set([
+      "relationship",
+      "fact",
+      "preference",
+      "opinion",
+      "goal",
+      "task",
+      "boundary",
+      "project",
+    ]);
 
     return {
       mirrorName: mirror.name,
@@ -172,8 +255,76 @@ export const getMirrorSideContext = internalQuery({
       ],
       shareableProfile: mirror.shareableProfile ?? "",
       interests: mirror.interests,
-      shareableHighlights: shareable.map((m) => m.content),
+      relationshipHighlights: contentsForTypes(["relationship"]),
+      personalHighlights: contentsForTypes(["fact", "preference", "opinion"]),
+      practicalHighlights: contentsForTypes(["goal", "task", "boundary"]),
+      workHighlights: contentsForTypes(["project"]),
+      shareableHighlights: shareable
+        .filter((m) => !categorizedTypes.has(m.type))
+        .map((m) => m.content),
     };
+  },
+});
+
+/** Active shared goals between the two owners, safe for this friendship only. */
+export const getSharedGoalsForConversation = internalQuery({
+  args: { friendshipId: v.id("friendships"), limit: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<ConversationSharedGoal[]> => {
+    const goals = await ctx.db
+      .query("friendGoals")
+      .withIndex("by_friendship_created", (q) =>
+        q.eq("friendshipId", args.friendshipId),
+      )
+      .order("desc")
+      .take(12);
+    const activeStatuses = new Set(["proposed", "agreed", "in_progress"]);
+    return goals
+      .filter((goal) => activeStatuses.has(goal.status))
+      .slice(0, args.limit ?? 6)
+      .map((goal) => ({
+        title: goal.title,
+        description: goal.description,
+        status: goal.status,
+      }));
+  },
+});
+
+export const getConversationSeedsForGeneration = internalQuery({
+  args: {
+    mirrorId: v.id("mirrors"),
+    friendshipId: v.id("friendships"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<ConversationSeedContext[]> => {
+    const now = Date.now();
+    const rows = await ctx.db
+      .query("conversationSeeds")
+      .withIndex("by_mirror_visibility", (q) =>
+        q.eq("mirrorId", args.mirrorId).eq("visibility", "shareable").eq("archived", false),
+      )
+      .order("desc")
+      .take(40);
+    const priorityRank: Record<string, number> = { high: 3, normal: 2, low: 1 };
+    return rows
+      .filter((seed) => !seed.expiresAt || seed.expiresAt > now)
+      .filter((seed) => !seed.friendshipId || seed.friendshipId === args.friendshipId)
+      .sort(
+        (a, b) =>
+          (priorityRank[b.priority] ?? 0) - (priorityRank[a.priority] ?? 0) ||
+          b.createdAt - a.createdAt,
+      )
+      .slice(0, args.limit ?? 5)
+      .map((seed) => ({
+        source: seed.source,
+        priority: seed.priority,
+        tone: seed.tone,
+        title: seed.title,
+        summary: seed.summary,
+        suggestedAngle: seed.suggestedAngle,
+        talkingPoints: seed.talkingPoints,
+        sourceUrl: seed.sourceUrl,
+        expiresAt: seed.expiresAt,
+      }));
   },
 });
 
@@ -270,6 +421,8 @@ export const generateDailyMirrorConversation = internalAction({
     friendshipId: v.id("friendships"),
     conversationId: v.optional(v.id("mirrorConversations")),
     notify: v.optional(v.boolean()),
+    budgetLocalDate: v.optional(v.string()),
+    budgetSlot: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{ conversationId: Id<"mirrorConversations"> }> => {
     const friendship = await ctx.runQuery(
@@ -297,19 +450,56 @@ export const generateDailyMirrorConversation = internalAction({
       const sideB = await ctx.runQuery(internal.conversations.getMirrorSideContext, {
         mirrorId: friendship.mirrorBId,
       });
+      const previousConversation = await ctx.runQuery(
+        internal.conversations.getLastCompletedConversationMessages,
+        {
+          friendshipId: args.friendshipId,
+          excludeConversationId: conversationId,
+          limit: 8,
+        },
+      );
+      const sharedGoals = await ctx.runQuery(
+        internal.conversations.getSharedGoalsForConversation,
+        {
+          friendshipId: args.friendshipId,
+          limit: 6,
+        },
+      );
+      const [seedsA, seedsB] = await Promise.all([
+        ctx.runQuery(internal.conversations.getConversationSeedsForGeneration, {
+          mirrorId: friendship.mirrorAId,
+          friendshipId: args.friendshipId,
+          limit: 5,
+        }),
+        ctx.runQuery(internal.conversations.getConversationSeedsForGeneration, {
+          mirrorId: friendship.mirrorBId,
+          friendshipId: args.friendshipId,
+          limit: 5,
+        }),
+      ]);
       if (!sideA || !sideB) {
         throw new Error("Missing Mirror context.");
       }
 
       const { provider } = await import("./ai/provider");
 
-      // Alternate speakers, A opens. Pick an even count in [MIN, MAX].
-      const total =
-        MIN_MESSAGES +
-        2 * Math.floor((Math.random() * (MAX_MESSAGES - MIN_MESSAGES + 1)) / 2);
+      // Alternate speakers, A opens. Each chat window is fixed at four messages.
+      const total = CHAT_WINDOW_MESSAGES;
       const sides = [
-        { ctx: sideA, mirrorId: friendship.mirrorAId, other: sideB, otherMirrorId: friendship.mirrorBId },
-        { ctx: sideB, mirrorId: friendship.mirrorBId, other: sideA, otherMirrorId: friendship.mirrorAId },
+        {
+          ctx: sideA,
+          mirrorId: friendship.mirrorAId,
+          other: sideB,
+          otherMirrorId: friendship.mirrorBId,
+          seeds: seedsA,
+        },
+        {
+          ctx: sideB,
+          mirrorId: friendship.mirrorBId,
+          other: sideA,
+          otherMirrorId: friendship.mirrorAId,
+          seeds: seedsB,
+        },
       ];
 
       const history: { speaker: string; content: string }[] = [];
@@ -317,11 +507,10 @@ export const generateDailyMirrorConversation = internalAction({
         const s = sides[i % 2];
         const prompt = buildConversationPrompt({
           side: s.ctx,
-          other: {
-            mirrorName: s.other.mirrorName,
-            shareableProfile: s.other.shareableProfile,
-            interests: s.other.interests,
-          },
+          other: s.other,
+          sharedGoals,
+          conversationSeeds: s.seeds,
+          previousConversation,
           recentHistory: history,
           totalMessages: total,
         });
@@ -364,6 +553,13 @@ export const generateDailyMirrorConversation = internalAction({
         conversationId,
         status: "failed",
       });
+      if (args.budgetLocalDate && args.budgetSlot) {
+        await ctx.runMutation(internal.settings.releaseAgentChatWindowBudget, {
+          friendshipId: args.friendshipId,
+          localDate: args.budgetLocalDate,
+          slot: args.budgetSlot,
+        });
+      }
       throw err;
     }
 
@@ -372,9 +568,10 @@ export const generateDailyMirrorConversation = internalAction({
 });
 
 /**
- * Manually trigger a Mirror-to-Mirror conversation for one of the caller's
- * friendships (e.g. a "chat now" button, and useful for testing the pipeline
- * without waiting for the cron). Validates membership + active status.
+ * Simulate the next scheduled Mirror-to-Mirror conversation for one of the
+ * caller's friendships. This uses the same `daily` conversation type and
+ * generation path as the scheduler, but skips the schedule-window budget claim
+ * so the owner can inspect behaviour without waiting for the next window.
  */
 export const generateConversationNow = action({
   args: { friendshipId: v.id("friendships") },
@@ -382,9 +579,20 @@ export const generateConversationNow = action({
     await ctx.runQuery(internal.conversations.assertMemberAndActive, {
       friendshipId: args.friendshipId,
     });
+    const conversationId = await ctx.runMutation(
+      internal.conversations.createPendingConversation,
+      {
+        friendshipId: args.friendshipId,
+        type: "daily",
+      },
+    );
     return await ctx.runAction(
       internal.conversations.generateDailyMirrorConversation,
-      { friendshipId: args.friendshipId, notify: true },
+      {
+        friendshipId: args.friendshipId,
+        conversationId,
+        notify: true,
+      },
     );
   },
 });
@@ -540,10 +748,11 @@ export const askMyMirror = action({
         purpose: "manual_prompt",
         userId: c.userId,
         mirrorId: c.mirrorId,
+        allowWebSearch: shouldEnableWebSearch(args.question),
         maxTokens: 500,
         ctx,
       });
-      answer = result.text.trim();
+      answer = appendSources(result.text.trim(), result.sources);
     } catch (err) {
       console.error("askMyMirror failed:", err);
       answer =

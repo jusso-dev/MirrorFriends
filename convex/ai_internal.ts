@@ -12,7 +12,13 @@ const PRICING: Record<string, { in: number; out: number }> = {
   "gpt-4o-mini": { in: 0.00015, out: 0.0006 },
   "gpt-4o": { in: 0.005, out: 0.015 },
   "gpt-4.1-mini": { in: 0.0004, out: 0.0016 },
+  "gpt-5.4-mini": { in: 0.00075, out: 0.0045 },
 };
+
+function estimatedCost(model: string, inputTokens = 0, outputTokens = 0) {
+  const p = PRICING[model] ?? { in: 0, out: 0 };
+  return (inputTokens / 1000) * p.in + (outputTokens / 1000) * p.out;
+}
 
 /** Log a single model call into the `aiUsage` table. */
 export const logAiUsage = internalMutation({
@@ -26,10 +32,6 @@ export const logAiUsage = internalMutation({
     outputTokens: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const p = PRICING[args.model] ?? { in: 0, out: 0 };
-    const estimatedCost =
-      ((args.inputTokens ?? 0) / 1000) * p.in +
-      ((args.outputTokens ?? 0) / 1000) * p.out;
     await ctx.db.insert("aiUsage", {
       userId: args.userId,
       mirrorId: args.mirrorId,
@@ -38,8 +40,21 @@ export const logAiUsage = internalMutation({
       purpose: args.purpose,
       inputTokens: args.inputTokens,
       outputTokens: args.outputTokens,
-      estimatedCost,
+      estimatedCost: estimatedCost(args.model, args.inputTokens, args.outputTokens),
       createdAt: Date.now(),
     });
+  },
+});
+
+export const recalculateEstimatedCosts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("aiUsage").collect();
+    for (const row of rows) {
+      await ctx.db.patch(row._id, {
+        estimatedCost: estimatedCost(row.model, row.inputTokens, row.outputTokens),
+      });
+    }
+    return { updated: rows.length };
   },
 });

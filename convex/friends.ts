@@ -2,6 +2,7 @@ import { query, mutation, internalQuery } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireUserAndMirror } from "./authz";
 import { Doc, Id } from "./_generated/dataModel";
+import { friendGoalStatus } from "./schema";
 
 // ---------------------------------------------------------------------------
 // Friend invites + friendships.
@@ -45,6 +46,57 @@ async function findFriendship(
     .query("friendships")
     .withIndex("by_pair", (q: any) => q.eq("userAId", a).eq("userBId", b))
     .unique();
+}
+
+async function assertFriendshipMember(
+  ctx: { db: any },
+  userId: Id<"users">,
+  friendshipId: Id<"friendships">,
+) {
+  const friendship = await ctx.db.get(friendshipId);
+  if (!friendship || (friendship.userAId !== userId && friendship.userBId !== userId)) {
+    throw new ConvexError({ code: "FORBIDDEN", message: "Not your friendship." });
+  }
+  if (friendship.status === "blocked") {
+    throw new ConvexError({ code: "BLOCKED", message: "Friendship is blocked." });
+  }
+  return friendship;
+}
+
+function optionalText(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function otherUserId(friendship: Doc<"friendships">, userId: Id<"users">): Id<"users"> {
+  return friendship.userAId === userId ? friendship.userBId : friendship.userAId;
+}
+
+function pendingGoalResponder(
+  friendship: Doc<"friendships">,
+  goal: Doc<"friendGoals">,
+): Id<"users"> {
+  return goal.needsResponseFromUserId ?? otherUserId(friendship, goal.createdByUserId);
+}
+
+async function notifyGoalPeer(
+  ctx: { db: any },
+  args: {
+    userId: Id<"users">;
+    title: string;
+    body: string;
+    goalId: Id<"friendGoals">;
+  },
+) {
+  await ctx.db.insert("notifications", {
+    userId: args.userId,
+    type: "friend_goal_updated",
+    title: args.title,
+    body: args.body,
+    read: false,
+    relatedId: args.goalId,
+    createdAt: Date.now(),
+  });
 }
 
 /**
@@ -96,6 +148,242 @@ export const listMyFriends = query({
         (a.friendship.lastConversationAt ?? a.friendship.createdAt),
     );
     return results;
+  },
+});
+
+export const listFriendGoals = query({
+  args: { friendshipId: v.optional(v.id("friendships")) },
+  handler: async (ctx, args) => {
+    const { user, mirror } = await requireUserAndMirror(ctx);
+    const friendships = args.friendshipId
+      ? [await assertFriendshipMember(ctx, user._id, args.friendshipId)]
+      : [
+          ...(await ctx.db
+            .query("friendships")
+            .withIndex("by_userA", (q) => q.eq("userAId", user._id))
+            .collect()),
+          ...(await ctx.db
+            .query("friendships")
+            .withIndex("by_userB", (q) => q.eq("userBId", user._id))
+            .collect()),
+        ].filter((f) => f.status !== "blocked");
+
+    const rows = [];
+    for (const friendship of friendships) {
+      if (!friendship) continue;
+      const friendMirrorId =
+        friendship.mirrorAId === mirror._id ? friendship.mirrorBId : friendship.mirrorAId;
+      const friendMirror = await ctx.db.get(friendMirrorId);
+      const goals = await ctx.db
+        .query("friendGoals")
+        .withIndex("by_friendship_created", (q) =>
+          q.eq("friendshipId", friendship._id),
+        )
+        .order("desc")
+        .collect();
+      for (const goal of goals) {
+        const responseUserId = pendingGoalResponder(friendship, goal);
+        rows.push({
+          goal,
+          friendshipId: friendship._id,
+          friendMirrorName: friendMirror?.name ?? "Friend's Mirror",
+          friendMirrorEmoji: friendMirror?.avatarEmoji,
+          createdByCurrentUser: goal.createdByUserId === user._id,
+          updatedByCurrentUser: goal.updatedByUserId === user._id,
+          needsResponseFromCurrentUser:
+            goal.status === "proposed" && responseUserId === user._id,
+        });
+      }
+    }
+    rows.sort((a, b) => b.goal.updatedAt - a.goal.updatedAt);
+    return rows;
+  },
+});
+
+export const createFriendGoal = mutation({
+  args: {
+    friendshipId: v.id("friendships"),
+    title: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUserAndMirror(ctx);
+    const friendship = await assertFriendshipMember(ctx, user._id, args.friendshipId);
+    const title = args.title.trim();
+    if (!title) {
+      throw new ConvexError({ code: "INVALID_GOAL", message: "Goal title is required." });
+    }
+    const recipientUserId = otherUserId(friendship, user._id);
+    const now = Date.now();
+    const goalId = await ctx.db.insert("friendGoals", {
+      friendshipId: args.friendshipId,
+      createdByUserId: user._id,
+      needsResponseFromUserId: recipientUserId,
+      updatedByUserId: user._id,
+      title,
+      description: optionalText(args.description),
+      status: "proposed",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("notifications", {
+      userId: recipientUserId,
+      type: "friend_goal_proposed",
+      title: "Shared goal proposed",
+      body: `${user.nickname ?? user.name ?? "A friend"} proposed: ${title}`,
+      read: false,
+      relatedId: goalId,
+      createdAt: now,
+    });
+    return goalId;
+  },
+});
+
+export const updateFriendGoal = mutation({
+  args: {
+    goalId: v.id("friendGoals"),
+    title: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUserAndMirror(ctx);
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Goal not found." });
+    }
+    const friendship = await assertFriendshipMember(ctx, user._id, goal.friendshipId);
+    const title = args.title.trim();
+    if (!title) {
+      throw new ConvexError({ code: "INVALID_GOAL", message: "Goal title is required." });
+    }
+    const recipientUserId = otherUserId(friendship, user._id);
+    const now = Date.now();
+    await ctx.db.patch(args.goalId, {
+      title,
+      description: optionalText(args.description),
+      status: "proposed",
+      needsResponseFromUserId: recipientUserId,
+      respondedByUserId: undefined,
+      updatedByUserId: user._id,
+      agreedAt: undefined,
+      declinedAt: undefined,
+      completedAt: undefined,
+      updatedAt: now,
+    });
+    await notifyGoalPeer(ctx, {
+      userId: recipientUserId,
+      title: "Shared goal updated",
+      body: `${user.nickname ?? user.name ?? "A friend"} updated a shared goal: ${title}`,
+      goalId: args.goalId,
+    });
+    return { ok: true, status: "proposed" as const };
+  },
+});
+
+export const updateFriendGoalStatus = mutation({
+  args: {
+    goalId: v.id("friendGoals"),
+    status: friendGoalStatus,
+  },
+  handler: async (ctx, args) => {
+    const { user } = await requireUserAndMirror(ctx);
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Goal not found." });
+    }
+    const friendship = await assertFriendshipMember(ctx, user._id, goal.friendshipId);
+    const now = Date.now();
+
+    if (args.status === "agreed" || args.status === "declined") {
+      if (goal.status !== "proposed") {
+        throw new ConvexError({
+          code: "INVALID_TRANSITION",
+          message: "Only proposed goals can be agreed or rejected.",
+        });
+      }
+      const responderId = pendingGoalResponder(friendship, goal);
+      if (responderId !== user._id) {
+        throw new ConvexError({
+          code: "FORBIDDEN",
+          message: "The other friend needs to respond to this proposal.",
+        });
+      }
+      await ctx.db.patch(args.goalId, {
+        status: args.status,
+        respondedByUserId: user._id,
+        updatedByUserId: user._id,
+        needsResponseFromUserId: undefined,
+        agreedAt: args.status === "agreed" ? now : undefined,
+        declinedAt: args.status === "declined" ? now : undefined,
+        completedAt: undefined,
+        updatedAt: now,
+      });
+      await notifyGoalPeer(ctx, {
+        userId: otherUserId(friendship, user._id),
+        title: args.status === "agreed" ? "Shared goal agreed" : "Shared goal rejected",
+        body: `${user.nickname ?? user.name ?? "A friend"} ${args.status === "agreed" ? "agreed to" : "rejected"}: ${goal.title}`,
+        goalId: args.goalId,
+      });
+      return { ok: true, status: args.status };
+    }
+
+    if (args.status === "in_progress") {
+      if (goal.status !== "agreed" && goal.status !== "in_progress") {
+        throw new ConvexError({
+          code: "INVALID_TRANSITION",
+          message: "Only agreed goals can be started.",
+        });
+      }
+      await ctx.db.patch(args.goalId, {
+        status: "in_progress",
+        updatedByUserId: user._id,
+        updatedAt: now,
+      });
+      return { ok: true, status: "in_progress" };
+    }
+
+    if (args.status === "done") {
+      if (
+        goal.status !== "agreed" &&
+        goal.status !== "in_progress" &&
+        goal.status !== "done"
+      ) {
+        throw new ConvexError({
+          code: "INVALID_TRANSITION",
+          message: "Only agreed or active goals can be completed.",
+        });
+      }
+      await ctx.db.patch(args.goalId, {
+        status: "done",
+        completedAt: goal.completedAt ?? now,
+        updatedByUserId: user._id,
+        updatedAt: now,
+      });
+      await notifyGoalPeer(ctx, {
+        userId: otherUserId(friendship, user._id),
+        title: "Shared goal completed",
+        body: `${user.nickname ?? user.name ?? "A friend"} marked complete: ${goal.title}`,
+        goalId: args.goalId,
+      });
+      return { ok: true, status: "done" };
+    }
+
+    if (args.status === "proposed") {
+      const recipientUserId = otherUserId(friendship, user._id);
+      await ctx.db.patch(args.goalId, {
+        status: "proposed",
+        needsResponseFromUserId: recipientUserId,
+        respondedByUserId: undefined,
+        updatedByUserId: user._id,
+        agreedAt: undefined,
+        declinedAt: undefined,
+        completedAt: undefined,
+        updatedAt: now,
+      });
+      return { ok: true, status: "proposed" };
+    }
+
+    return { ok: true, status: args.status };
   },
 });
 
@@ -217,23 +505,17 @@ export const pauseFriendship = mutation({
   },
 });
 
-/**
- * Remove (block) a friendship. We mark as "blocked" rather than hard-deleting so
- * the pair can't be silently re-invited and prior conversations remain readable
- * to their owners. Pass `hard: true` to fully delete.
- */
+/** Remove a friendship from both users' visible connection lists. */
 export const removeFriendship = mutation({
-  args: { friendshipId: v.id("friendships"), block: v.optional(v.boolean()) },
+  args: { friendshipId: v.id("friendships") },
   handler: async (ctx, args) => {
     const { user } = await requireUserAndMirror(ctx);
     const f = await ctx.db.get(args.friendshipId);
     if (!f || (f.userAId !== user._id && f.userBId !== user._id)) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Not your friendship." });
     }
-    await ctx.db.patch(args.friendshipId, {
-      status: args.block ? "blocked" : "paused",
-    });
-    return { ok: true };
+    await ctx.db.patch(args.friendshipId, { status: "blocked" });
+    return { ok: true, status: "blocked" };
   },
 });
 
@@ -241,7 +523,7 @@ export const removeFriendship = mutation({
 // Internal accessors for crons / tools.
 // ---------------------------------------------------------------------------
 
-/** All active friendships (used by the daily cron). */
+/** All active friendships (used by scheduler and tools). */
 export const listActiveFriendships = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -254,7 +536,7 @@ export const listActiveFriendships = internalQuery({
 
 /**
  * Active friendships where NEITHER owner has globally paused their Mirror. This
- * is the authoritative set the daily cron may generate conversations for.
+ * is the authoritative set the scheduler may generate conversations for.
  */
 export const listActiveFriendshipsForCron = internalQuery({
   args: {},

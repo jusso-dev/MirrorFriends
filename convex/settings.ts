@@ -1,7 +1,12 @@
-import { query, mutation } from "./_generated/server";
-import { v } from "convex/values";
-import { requireUser, requireUserAndMirror } from "./authz";
+import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
+import { requireAdmin, requireUser, requireUserAndMirror } from "./authz";
 import { cascadeDeleteMirror } from "./mirrors";
+import {
+  AGENT_SCHEDULE_KEY,
+  normaliseAgentSchedule,
+  serialiseAgentSchedule,
+} from "./agent_schedule";
 
 // ---------------------------------------------------------------------------
 // Settings: privacy controls, AI usage estimate, data export, account deletion.
@@ -15,6 +20,134 @@ export const setMirrorPaused = mutation({
     const user = await requireUser(ctx);
     await ctx.db.patch(user._id, { mirrorPaused: args.paused, updatedAt: Date.now() });
     return { paused: args.paused };
+  },
+});
+
+/** Show the current app-wide Mirror-to-Mirror communication schedule. */
+export const getAgentSchedule = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireUser(ctx);
+    const row = await ctx.db
+      .query("featureFlags")
+      .withIndex("by_key", (q) => q.eq("key", AGENT_SCHEDULE_KEY))
+      .unique();
+    return normaliseAgentSchedule(row?.value);
+  },
+});
+
+/** Admin-only: update the times when scheduled Mirror chats may run. */
+export const updateAgentSchedule = mutation({
+  args: {
+    enabled: v.boolean(),
+    timezone: v.string(),
+    times: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    let value: string;
+    try {
+      value = serialiseAgentSchedule(args);
+    } catch (error) {
+      throw new ConvexError({
+        code: "INVALID_SCHEDULE",
+        message: error instanceof Error ? error.message : "Invalid schedule.",
+      });
+    }
+
+    const schedule = normaliseAgentSchedule(value);
+    if (schedule.enabled && schedule.times.length === 0) {
+      throw new ConvexError({
+        code: "INVALID_SCHEDULE",
+        message: "Add at least one communication time.",
+      });
+    }
+
+    const existing = await ctx.db
+      .query("featureFlags")
+      .withIndex("by_key", (q) => q.eq("key", AGENT_SCHEDULE_KEY))
+      .unique();
+    const patch = {
+      key: AGENT_SCHEDULE_KEY,
+      enabled: schedule.enabled,
+      value,
+      description: "App-wide Mirror-to-Mirror communication schedule.",
+      updatedAt: Date.now(),
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+    } else {
+      await ctx.db.insert("featureFlags", patch);
+    }
+    return schedule;
+  },
+});
+
+export const getAgentScheduleForCron = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const row = await ctx.db
+      .query("featureFlags")
+      .withIndex("by_key", (q) => q.eq("key", AGENT_SCHEDULE_KEY))
+      .unique();
+    return normaliseAgentSchedule(row?.value);
+  },
+});
+
+export const claimAgentChatWindowBudget = internalMutation({
+  args: {
+    friendshipId: v.id("friendships"),
+    localDate: v.string(),
+    slot: v.string(),
+    source: v.union(v.literal("scheduled"), v.literal("manual")),
+  },
+  handler: async (ctx, args) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.localDate)) {
+      throw new ConvexError({
+        code: "INVALID_DATE",
+        message: "Budget date must use YYYY-MM-DD format.",
+      });
+    }
+    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(args.slot) && args.slot !== "manual") {
+      throw new ConvexError({
+        code: "INVALID_SLOT",
+        message: "Budget slot must use HH:mm format.",
+      });
+    }
+
+    const key = `agent_chat_window:${args.friendshipId}:${args.localDate}:${args.slot}`;
+    const existing = await ctx.db
+      .query("featureFlags")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    if (existing) return { claimed: false };
+
+    await ctx.db.insert("featureFlags", {
+      key,
+      enabled: true,
+      value: JSON.stringify({ source: args.source, slot: args.slot, claimedAt: Date.now() }),
+      description: "Four-message Mirror chat window budget claim.",
+      updatedAt: Date.now(),
+    });
+    return { claimed: true };
+  },
+});
+
+export const releaseAgentChatWindowBudget = internalMutation({
+  args: {
+    friendshipId: v.id("friendships"),
+    localDate: v.string(),
+    slot: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const key = `agent_chat_window:${args.friendshipId}:${args.localDate}:${args.slot}`;
+    const existing = await ctx.db
+      .query("featureFlags")
+      .withIndex("by_key", (q) => q.eq("key", key))
+      .unique();
+    if (!existing) return { released: false };
+    await ctx.db.delete(existing._id);
+    return { released: true };
   },
 });
 

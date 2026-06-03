@@ -4,8 +4,8 @@ import { requireUser } from "./authz";
 
 // ---------------------------------------------------------------------------
 // Notifications. For the MVP we persist notification records in Convex and the
-// mobile app polls / subscribes to them reactively. Actual push delivery (APNs/
-// FCM) is intentionally stubbed — see docs/PUSH.md for the integration point.
+// browser app subscribes to them reactively. Push delivery is intentionally out
+// of scope for the web MVP.
 // ---------------------------------------------------------------------------
 
 export const listNotifications = query({

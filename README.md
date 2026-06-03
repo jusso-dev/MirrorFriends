@@ -1,232 +1,224 @@
-# MirrorFriends 🪞
+# MirrorFriends
 
-Create an AI version of yourself — a **Mirror** — teach it about you, connect
-with friends, and let your Mirrors talk to each other daily.
+![MirrorFriends sci-fi banner](docs/assets/mirrorfriends-readme-banner.svg)
 
-MirrorFriends is a cross-platform mobile app (iOS + Android via **Skip.dev** /
-Swift / SwiftUI) backed entirely by **Convex** (database, queries, mutations,
-actions, cron jobs). All AI runs server-side through a provider abstraction;
-the app never talks to OpenAI directly.
+MirrorFriends is an invite-only web app for personal AI Mirrors. Each Mirror
+represents its owner to connected friends' Mirrors, using carefully separated
+private and shareable context to surface useful check-ins, shared goals, timely
+conversation ideas, and short daily chats.
 
----
+The browser app is the dashboard. Convex owns auth, data, scheduling, AI calls,
+usage logging, and all privacy-sensitive prompt construction.
 
-## Repository layout
+## What It Can Do
 
-```
-.
-├── convex/                     # Convex backend (the full backend — no Node/PG/Redis)
-│   ├── schema.ts               # All tables + indexes (incl. Convex Auth authTables)
-│   ├── auth.ts                  # Convex Auth config (convexAuth + providers)
-│   ├── auth.config.ts          # JWT issuer config
-│   ├── http.ts                 # Convex Auth HTTP routes
-│   ├── authz.ts                # Authorization helpers (requireUser, …)
-│   ├── users.ts                # getCurrentUser, completeOnboarding
-│   ├── mirrors.ts              # Mirror profile + behaviour generation
-│   ├── memories.ts             # Private/shareable memory system
-│   ├── friends.ts              # Invites + friendships
-│   ├── conversations.ts        # Mirror-to-Mirror chat, Ask My Mirror, weekly summary
-│   ├── notifications.ts        # Notification records
-│   ├── settings.ts             # Privacy controls, export, delete account
-│   ├── flags.ts                # Feature flags
-│   ├── ai_internal.ts          # AI usage logging
-│   ├── crons.ts                # Scheduled functions
-│   ├── cron_runners.ts         # Cron fan-out logic
-│   └── ai/
-│       ├── provider.ts         # AIProvider abstraction (+ usage logging)
-│       ├── openai.ts           # OpenAIProvider implementation
-│       ├── prompts.ts          # Reusable prompt builders (privacy-enforcing)
-│       └── tools.ts            # Internal tool system (memory.search, etc.)
-│
-└── MirrorApp/                  # Skip.dev cross-platform app
-    ├── Package.swift           # SPM manifest (Skip plugin)
-    ├── Skip.env                # Skip product config
-    └── Sources/
-        ├── MirrorModel/        # Shared model layer (Codable models + native Convex SDK wrapper)
-        └── MirrorApp/          # SwiftUI app (screens + view models)
-```
+- Create an invite-only account with Convex Auth.
+- Bootstrap admins from configured environment variables.
+- Let admins issue portal invite links from Settings.
+- Complete onboarding to create a personal Mirror profile.
+- Tune Mirror name, avatar, tone, personality, interests, goals, and boundaries.
+- Generate and version active Mirror behaviour rules from profile and memory.
+- Add memories as either `private` or `shareable`.
+- Import pasted chat logs into reviewed tone, profile, and memory drafts.
+- Discard raw pasted chat logs after analysis instead of storing transcripts.
+- Add short-lived **conversation seeds** from videos, articles, podcasts, news, events, personal notes, friend notes, or other sources.
+- Analyze pasted source material into editable conversation-seed drafts.
+- Scope conversation seeds to all active friends or a specific friendship.
+- Set seed visibility, priority, tone, source URL, and expiry.
+- Connect friends with invite codes.
+- Propose shared friend goals.
+- Let either friend agree, reject, update, start, or complete shared goals.
+- Generate scheduled Mirror-to-Mirror chats for active friendships.
+- Simulate the next scheduled-style friend chat on demand.
+- Use previous chats, shared goals, relationship context, and conversation seeds to keep chats fresh.
+- Ask your own Mirror private questions in the Ask view.
+- Use OpenAI-hosted web search from Ask My Mirror for current public facts when the user asks for web/current/source-backed information.
+- View AI usage estimates.
+- Pause all Mirror activity for an account.
+- Configure agent schedule windows from Settings.
 
----
+## Privacy Model
 
-## How it works
+MirrorFriends is designed around explicit context boundaries:
 
-- **Each user owns exactly one Mirror.** Onboarding creates it and seeds memory.
-- **Memory is split by visibility.** `private` memory only ever informs the
-  owner's own Mirror; `shareable` memory feeds a cached, AI-safe
-  `shareableProfile` that is the *only* thing exposed to friends' Mirrors.
-- **Behaviour is derived, versioned state.** Editing your profile/memory
-  regenerates a new `mirrorBehaviours` version (the old ones are kept for audit).
-- **A daily cron** creates a short (4–8 message) Mirror-to-Mirror conversation
-  for every active friendship, then notifies both users.
-- **Ask My Mirror** is the one place private memory is used — your Mirror is
-  talking to *you*.
+- `private` memory is only used when a Mirror talks to its own owner.
+- `shareable` memory can inform friend Mirror conversations.
+- Friend conversations do not receive private memory.
+- Conversation seeds only enter friend chats when they are `shareable`, unarchived, and unexpired.
+- Friend-scoped seeds are only used for that friendship.
+- Raw pasted chat logs, transcripts, articles, and notes are analyzed into reviewed summaries and then discarded.
+- The browser never receives the OpenAI API key.
+- Model calls happen only inside Convex actions.
+- Web search is limited to owner-initiated Ask My Mirror questions that ask for current or public information.
 
-Privacy/safety rules are enforced in **two layers**: the data-access layer
-(internal queries only ever return shareable data across a Mirror boundary) and
-the prompt-construction layer (`convex/ai/prompts.ts`). See
-[docs/PRIVACY.md](docs/PRIVACY.md).
+## Product Areas
 
----
+### Today
 
-## Backend setup (Convex)
+Shows recent Mirror-to-Mirror conversations, notifications, and schedule-aware
+activity. Owners can read transcripts and simulate the next scheduled-style chat
+for testing behaviour.
 
-### 1. Install + initialize
+### Mirror
+
+Edits the owner's Mirror profile and regenerates active behaviour rules. These
+rules shape tone, privacy, communication style, and safe shareable summaries.
+
+### Memory
+
+Stores durable context for the Mirror:
+
+- private facts, preferences, goals, boundaries, opinions, projects, tasks, and relationships
+- shareable context for friend conversations
+- chat-log import with review before save
+- conversation seeds for timely talking points
+
+Conversation seeds are intentionally separate from memory because many watched,
+read, or news/event items are temporary. Expiry keeps stale topics from
+dominating future chats.
+
+### Friends
+
+Handles friend connections and shared goals. Shared goals are friendship-scoped
+and can move through proposal, agreement, progress, completion, or rejection.
+
+### Ask
+
+Private chat with the owner's own Mirror. This is where private memory can be
+used. Ask can also use web search for current public facts and returns source
+URLs when search is used.
+
+### Settings
+
+Controls pause/resume, scheduled chat windows, usage estimates, admin portal
+invites, and session management.
+
+## Stack
+
+- React + Vite frontend in `src/`
+- Convex database, functions, auth, actions, and crons in `convex/`
+- Convex Auth for password auth and optional OAuth providers
+- OpenAI provider abstraction in `convex/ai/provider.ts`
+- OpenAI implementation in `convex/ai/openai.ts`
+- Sci-fi product theme and assets in `src/styles.css`, `public/assets/`, and `docs/assets/`
+
+## Brand Assets
+
+- README banner: `docs/assets/mirrorfriends-readme-banner.svg`
+- Generated sci-fi banner art: `docs/assets/mirrorfriends-sci-fi-banner.png`
+- Product logo: `public/assets/mirrorfriends-logo.svg`
+- App mark/favicon: `public/assets/mirrorfriends-mark.svg`
+
+## Run Locally
+
+Install dependencies:
 
 ```bash
 npm install
-npx convex dev          # links/creates a Convex project and generates convex/_generated
 ```
 
-`npx convex dev` watches `convex/` and pushes functions to your dev deployment.
-It also generates `convex/_generated/` (gitignored here — it's created locally).
-
-### 2. Environment variables
-
-Set these in the **Convex dashboard → Settings → Environment Variables**
-(see `.env.example`):
-
-```
-OPENAI_API_KEY=sk-...           # required for AI features
-OPENAI_MODEL=gpt-4o-mini        # optional override
-
-# Convex Auth (generated by `npx @convex-dev/auth`):
-JWT_PRIVATE_KEY=...
-JWKS=...
-SITE_URL=http://localhost:3000
-# Optional OAuth (Apple/Google):
-# AUTH_GOOGLE_ID=  AUTH_GOOGLE_SECRET=  AUTH_APPLE_ID=  AUTH_APPLE_SECRET=
-```
-
-> The app **never** receives `OPENAI_API_KEY`. All model calls happen inside
-> Convex actions via the `AIProvider` abstraction.
-
-### 3. Typecheck
+Start Convex once to link or create a deployment and generate bindings:
 
 ```bash
-npx tsc --noEmit
+npm run dev:convex
 ```
 
-### 4. Try the pipeline
-
-From the dashboard or CLI you can exercise the daily conversation generator
-without waiting for the cron:
+Copy the printed deployment URL into `.env.local`:
 
 ```bash
-# Generate a conversation for a friendship (must be signed in as a member):
-npx convex run conversations:generateConversationNow '{"friendshipId":"<id>"}'
-
-# Force the daily fan-out:
-npx convex run cron_runners:runDailyMirrorConversations
+VITE_CONVEX_URL=https://your-deployment.convex.cloud
 ```
 
----
-
-## Auth — Convex Auth
-
-Authentication is handled by **Convex Auth** (`@convex-dev/auth`), configured in
-`convex/auth.ts` (`convexAuth({ providers: [Password, Google, Apple] })`).
-`convex/http.ts` registers its routes and `convex/schema.ts` includes
-`...authTables`.
-
-Set it up once:
+Then start Convex and the web app together:
 
 ```bash
-npm install                 # installs @convex-dev/auth + @auth/core
-npx @convex-dev/auth        # generates JWT_PRIVATE_KEY / JWKS / SITE_URL
+npm run dev
 ```
 
-- **Email + password** works end-to-end natively: the app calls the `auth:signIn`
-  action with `{ provider: "password", params: { email, password, flow } }` and
-  stores the returned `{ token, refreshToken }` (see `ConvexAuthBackend.swift`).
-- **Apple / Google** use OAuth (browser redirect); set the `AUTH_*` provider
-  secrets and complete the redirect with an in-app web auth session to enable.
+Open the Vite URL printed by the terminal, usually:
 
-Every function validates the caller via `convex/authz.ts` helpers
-(`requireUser`, `requireUserAndMirror`, …), which resolve the user with
-`getAuthUserId(ctx)`. `users._id` **is** the Convex Auth user id, so there is no
-path that trusts a client-supplied user id.
+```text
+http://127.0.0.1:5173
+```
 
-> The Auth screen also has a "Developer sign-in" that accepts a pasted JWT for
-> quick testing.
+## Environment Variables
 
----
+Use `.env.example` as the local template. Browser-facing values belong in
+`.env.local`; server-side values should be configured in the Convex dashboard.
 
-## Mobile app setup (Skip.dev)
+### Convex Auth
 
-Skip builds native iOS and Android apps from the shared Swift sources.
-
-### Prerequisites (macOS)
+Generate auth values with:
 
 ```bash
-brew install skiptools/skip/skip
-skip checkup            # verifies Xcode, Android SDK, Gradle, JDK
+npx @convex-dev/auth
 ```
 
-### Configure the deployment URL
-
-Set your Convex deployment URL (from `npx convex dev`) in
-`MirrorApp/Sources/MirrorApp/Services/AppConfig.swift` (or inject `CONVEX_URL`
-via the build's Info.plist):
-
-```swift
-public static let fallbackConvexURL = "https://your-deployment.convex.cloud"
-```
-
-### Run
+Set these in Convex environment variables:
 
 ```bash
-cd MirrorApp
-skip init --version            # if you need to (re)generate platform projects
-swift build                    # builds + transpiles
-# iOS:     open the generated Darwin/*.xcodeproj and run, or `skip run`
-# Android: skip launches the Gradle build for the Android target
+JWT_PRIVATE_KEY=
+JWKS=
+SITE_URL=http://localhost:5173
+ADMIN_EMAIL=
 ```
 
-The app uses the **native Convex Swift SDK** (`convex-swift` / `ConvexMobile`),
-wrapped by `MirrorModel/ConvexService.swift` — a live WebSocket with auth,
-reactive `subscribe`, and one-shot `query`. The Swift sources under `Sources/`
-are the single source of truth; Skip transpiles `MirrorModel` and `MirrorApp` to
-Kotlin for the Android build. See [MirrorApp/PLATFORMS.md](MirrorApp/PLATFORMS.md)
-for the per-platform shells and the Android client note.
+Public account creation is disabled. `ADMIN_EMAIL` or `ADMIN_EMAILS` can create
+bootstrap admin accounts. Everyone else needs an admin-created portal invite.
 
-### Tests
+Optional OAuth providers:
 
 ```bash
-cd MirrorApp
-swift test                     # runs MirrorModelTests on both Swift + (via Skip) JVM
+AUTH_GOOGLE_ID=
+AUTH_GOOGLE_SECRET=
+AUTH_APPLE_ID=
+AUTH_APPLE_SECRET=
 ```
 
----
+### OpenAI
 
-## Screens
+Set these in Convex environment variables:
 
-Auth · Onboarding · Home · My Mirror · Memory · Friends · Mirror Conversation ·
-Ask My Mirror · Settings. (See `MirrorApp/Sources/MirrorApp/Screens/`.)
+```bash
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.4-mini
+OPENAI_WEB_SEARCH_CONTEXT_SIZE=medium
+```
 
----
+The frontend never reads these values.
 
-## MVP acceptance criteria → where it lives
+## Useful Commands
 
-| # | Criterion | Implementation |
-|---|-----------|----------------|
-| 1 | Sign up | Convex Auth `auth:signIn` (Password), `AuthView` |
-| 2 | Complete onboarding | `users:completeOnboarding`, `OnboardingView` |
-| 3 | Create a Mirror | created inside `completeOnboarding` |
-| 4 | Add memories | `memories:addMemory`, `MemoryView` |
-| 5 | Create invite code | `friends:createFriendInvite` |
-| 6 | Accept invite | `friends:acceptFriendInvite` |
-| 7 | Mirrors become friends | `friendships` row, status `active` |
-| 8 | Daily cron generates a conversation | `crons.ts` → `cron_runners` → `conversations:generateDailyMirrorConversation` |
-| 9 | Both users view it | `conversations:listMirrorConversations` / `listConversationMessages` |
-| 10 | Ask own Mirror | `conversations:askMyMirror`, `AskMyMirrorView` |
-| 11 | Behaviour regenerates on change | `mirrors:generateBehaviourForMirror` triggered by profile/memory edits |
-| 12 | AI usage logged | `ai_internal:logAiUsage` on every model call |
-| 13 | Privacy enforced | data-access + prompt layers (see docs/PRIVACY.md) |
+```bash
+npm run dev          # Convex backend + Vite web app
+npm run dev:web      # Vite web app only
+npm run dev:convex   # Convex backend
+npm run build        # TypeScript check + production build
+npm run typecheck    # TypeScript check only
+npm run deploy       # Deploy Convex functions
+```
 
----
+Regenerate Convex bindings:
 
-## Intentionally NOT built (per spec)
+```bash
+npx convex codegen
+```
 
-Group chats · voice · video · payments · public feed · marketplace · vector
-memory · admin dashboard. The schema and provider/tool abstractions are
-structured so these can be added later (e.g. the `memories.embedding` field +
-commented vector index for semantic memory).
+## Repository Layout
+
+```text
+convex/                 Convex schema, queries, mutations, actions, crons
+convex/ai/              AI provider abstraction, prompts, tools, OpenAI adapter
+src/                    React application
+src/lib/api.ts          Typed client-side Convex function references
+public/assets/          App logo and favicon assets
+docs/assets/            README and brand imagery
+```
+
+## Notes For Contributors
+
+- Keep examples generic and open-source safe.
+- Do not commit real deployment URLs, API keys, local paths, personal names, or private context.
+- Prefer short reviewed summaries over raw imported transcripts or articles.
+- Preserve the private/shareable boundary when adding new AI context.
+- Run `npm run build` before committing.

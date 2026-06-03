@@ -3,18 +3,19 @@ import { internal } from "./_generated/api";
 
 // ---------------------------------------------------------------------------
 // Scheduled functions.
-//   dailyMirrorConversations  — generates short Mirror-to-Mirror chats daily.
-//   weeklyMirrorSummaries      — sends each owner a weekly digest.
+//   mirrorConversationScheduler — checks admin-configured chat windows.
+//   weeklyMirrorSummaries       — sends each owner a weekly digest.
 //
-// Times are UTC. Adjust to taste; staggering inside the runners spreads load.
+// Convex cron schedules are static, so the conversation scheduler runs often
+// and the runner checks app settings before doing any AI work.
 // ---------------------------------------------------------------------------
 
 const crons = cronJobs();
 
-crons.daily(
-  "dailyMirrorConversations",
-  { hourUTC: 15, minuteUTC: 0 }, // ~mid-morning AEST / start of US day
-  internal.cron_runners.runDailyMirrorConversations,
+crons.interval(
+  "mirrorConversationScheduler",
+  { minutes: 15 },
+  internal.cron_runners.runScheduledMirrorConversations,
   {},
 );
 

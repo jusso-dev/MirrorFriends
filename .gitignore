@@ -14,22 +14,6 @@ build/
 *.log
 npm-debug.log*
 
-# Swift / Xcode / Skip
-.build/
-.swiftpm/
-DerivedData/
-*.xcodeproj/xcuserdata/
-*.xcworkspace/xcuserdata/
-Package.resolved
-.skip/
-
-# Android
-MirrorApp/Android/.gradle/
-MirrorApp/Android/build/
-MirrorApp/Android/app/build/
-local.properties
-*.iml
-
 # OS
 .DS_Store
 Thumbs.db

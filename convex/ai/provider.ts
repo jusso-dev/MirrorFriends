@@ -6,7 +6,7 @@ import { OpenAIProvider } from "./openai";
 // ---------------------------------------------------------------------------
 // AI provider abstraction.
 //
-// The mobile app NEVER calls a model provider directly. Every model call goes
+// The browser app NEVER calls a model provider directly. Every model call goes
 // through a Convex action which uses this abstraction. Swapping providers (or
 // adding Anthropic / Gemini / OpenRouter / Ollama) means implementing this one
 // interface and changing the `provider` export below — nothing else changes.
@@ -16,6 +16,8 @@ export type AIPurpose =
   | "daily_conversation"
   | "manual_prompt"
   | "behaviour_generation"
+  | "chat_import"
+  | "conversation_seed"
   | "weekly_summary";
 
 export interface AIUsageMeta {
@@ -35,8 +37,18 @@ export interface GenerateTextInput extends AIUsageMeta {
   prompt: string;
   /** Optional prior turns for multi-message context. */
   messages?: { role: "user" | "assistant" | "system"; content: string }[];
+  /**
+   * Enables provider-hosted tools for this call. Keep this false for friend
+   * conversations unless the caller has a clear privacy-safe reason to search.
+   */
+  allowWebSearch?: boolean;
   maxTokens?: number;
   temperature?: number;
+}
+
+export interface WebSearchSource {
+  title: string;
+  url: string;
 }
 
 export interface GenerateTextResult {
@@ -44,6 +56,7 @@ export interface GenerateTextResult {
   model: string;
   inputTokens?: number;
   outputTokens?: number;
+  sources?: WebSearchSource[];
 }
 
 export interface GenerateStructuredInput<T> extends AIUsageMeta {
