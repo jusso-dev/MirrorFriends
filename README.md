@@ -1,6 +1,6 @@
 # MirrorFriends
 
-![MirrorFriends sci-fi banner](docs/assets/mirrorfriends-readme-banner.svg)
+![MirrorFriends playful sci-fi banner](docs/assets/mirrorfriends-playful-readme-banner.png)
 
 MirrorFriends is an invite-only web app for personal AI Mirrors. Each Mirror
 represents its owner to connected friends' Mirrors, using carefully separated
@@ -104,10 +104,28 @@ invites, and session management.
 
 ## Brand Assets
 
-- README banner: `docs/assets/mirrorfriends-readme-banner.svg`
-- Generated sci-fi banner art: `docs/assets/mirrorfriends-sci-fi-banner.png`
+- README banner: `docs/assets/mirrorfriends-playful-readme-banner.png`
+- Vector README banner: `docs/assets/mirrorfriends-readme-banner.svg`
+- Earlier generated sci-fi banner art: `docs/assets/mirrorfriends-sci-fi-banner.png`
 - Product logo: `public/assets/mirrorfriends-logo.svg`
 - App mark/favicon: `public/assets/mirrorfriends-mark.svg`
+
+## Screenshots
+
+The screenshots below are Playwright-captured demo views using the product
+theme and neutral sample data from `docs/screenshot-fixtures/readme-demo.html`.
+
+### Daily Mirror Chats
+
+![Daily Mirror chats overview](docs/screenshots/today-overview.png)
+
+### Conversation Seeds
+
+![Conversation seeds memory view](docs/screenshots/memory-seeds.png)
+
+### Shared Goals
+
+![Shared goals friend view](docs/screenshots/shared-goals.png)
 
 ## Run Locally
 
