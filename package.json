@@ -15,8 +15,8 @@
     "test": "convex run tests:run"
   },
   "dependencies": {
-    "@auth/core": "^0.37.0",
-    "@convex-dev/auth": "^0.0.93",
+    "@auth/core": "^0.41.3",
+    "@convex-dev/auth": "^2.1.0",
     "convex": "^1.40.0",
     "lucide-react": "^0.468.0",
     "openai": "^4.67.0",
